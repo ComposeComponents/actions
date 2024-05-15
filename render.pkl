@@ -1,6 +1,8 @@
-_modules: Listing<String>
+_modules: Listing<String> = new Listing {
+    "app"
+}
 workflows: Listing<Module> = new Listing {
-    import("build.pkl")
+    import("build-lib.pkl")
     import("lint.pkl")
     import("test.pkl")
 }
@@ -8,7 +10,7 @@ workflows: Listing<Module> = new Listing {
 hidden output {
     files {
         for (workflow in workflows) {
-            ["\(workflow.name.decapitalize()).yml"] = new FileOutput {
+            ["\(workflow.name.toLowerCase().replaceAll(" ", "-")).yml"] = new FileOutput {
                 renderer = new YamlRenderer {}
                 value = (workflow) {
                     modules = _modules.toList()

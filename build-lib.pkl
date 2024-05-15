@@ -4,7 +4,7 @@ import "src/common.pkl"
 hidden modules: List<String>
 hidden sonatypeEnabled = true
 
-name = "Build"
+name = "Build Library"
 
 on = new On {
     push = new Push {

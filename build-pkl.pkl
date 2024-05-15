@@ -14,7 +14,7 @@ local overwriteFile = new ActionStep {
     }
 }
 
-name = "Build"
+name = "Build Pkl"
 
 on = new On {
     push = new Push {

@@ -14,7 +14,7 @@ hidden aabVariants: List<String> = List(
     "release"
 )
 
-name = "Build"
+name = "Build App"
 
 on = new On {
     push = new Push {
