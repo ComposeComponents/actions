@@ -33,7 +33,7 @@ local function buildJob(
     strategy = new JobStrategy {
         matrix = new Mapping {
             ["module"] = modules
-            ["variant"] = descriptors.map((e) -> e.full())
+            ["build-command"] = descriptors.map((e) -> e.full())
             ["include"] = generateMatrixInclude(descriptors)
         }
     }
