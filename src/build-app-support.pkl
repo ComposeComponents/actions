@@ -1,0 +1,22 @@
+open module support
+extends "./base.pkl"
+import "./common.pkl"
+
+class BuildDescriptor {
+    variant: String
+    flavor: String?
+    release: Boolean
+
+    function full() = if (flavor == null) variant.capitalize() else "\(flavor.capitalize())\(variant.capitalize())"
+    function path() = if (flavor == null) variant else "\(flavor)/\(variant)"
+    function name() = if (flavor == null) variant else "\(flavor)-\(variant)"
+}
+
+const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
+    variant = "release"
+    release = true
+}
+const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
+    variant = "debug"
+    release = false
+}

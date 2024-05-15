@@ -1,16 +1,7 @@
-extends "src/base.pkl"
+extends "src/build-app-support.pkl"
 import "src/common.pkl"
 
-class BuildDescriptor {
-    variant: String
-    flavor: String?
-    release: Boolean
-
-    function full() = if (flavor == null) variant.capitalize() else "\(flavor.capitalize())\(variant.capitalize())"
-    function path() = if (flavor == null) variant else "\(flavor)/\(variant)"
-    function name() = if (flavor == null) variant else "\(flavor)-\(variant)"
-}
-
+// These functions should be in another file but pkl has a bug
 local function generateMatrixInclude(descriptors: List<BuildDescriptor>): Listing<Mapping<String, Any>> = new Listing {
     for (descriptor in descriptors) {
         new Mapping {
@@ -75,13 +66,44 @@ local function buildJob(
     }
 }
 
-local const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
-    variant = "release"
-    release = true
-}
-local const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
-    variant = "debug"
-    release = false
+local function releaseJob(
+    descriptors: List<BuildDescriptor>, 
+    extension: String
+) = new Job {
+    strategy = new JobStrategy {
+        matrix = new Mapping {
+            ["module"] = modules
+            ["build-command"] = descriptors.map((e) -> e.full())
+            ["include"] = generateMatrixInclude(descriptors)
+        }
+    }
+    needs = new Listing {
+        "version"
+        "release"
+        "build-\(extension)"
+    }
+    steps = new Listing {
+        new ActionStep {
+            uses = "actions/download-artifact@master"
+            with = new Mapping {
+                ["name"] = "${{ matrix.module }}-${{ matrix.name }}-\(extension)"
+                ["path"] = "./"
+            }
+        }
+        new ActionStep {
+            name = "Upload Artifact to Release"
+            uses = "actions/upload-release-asset@v1"
+            env = new Mapping {
+                ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
+            }
+            with = new Mapping {
+                ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
+                ["asset_path"] = "./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+                ["asset_name"] = "${{ matrix.module }}-${{ matrix.name }}-v${{ needs.version.outputs.version }}.\(extension)"
+                ["asset_content_type"] = "application/zip"
+            }
+        }
+    }  
 }
 
 hidden modules: List<String> = List(
@@ -177,74 +199,12 @@ jobs = new Mapping {
             common.create_release
         }
     }
-    ["publish-release-apk"] = new Job {
-        strategy = new JobStrategy {
-            matrix = new Mapping {
-                ["module"] = modules
-                ["variant"] = apkBuildDescriptors
-            }
-        }
-        needs = new Listing {
-            "version"
-            "release"
-            "build-apk"
-        }
-        steps = new Listing {
-            new ActionStep {
-                uses = "actions/download-artifact@master"
-                with = new Mapping {
-                    ["name"] = "${{ matrix.module }}-${{ matrix.variant }}-apk"
-                    ["path"] = "./"
-                }
-            }
-            new ActionStep {
-                name = "Upload Artifact to Release"
-                uses = "actions/upload-release-asset@v1"
-                env = new Mapping {
-                    ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
-                }
-                with = new Mapping {
-                    ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
-                    ["asset_path"] = "./${{ matrix.module }}-${{ matrix.variant }}.apk"
-                    ["asset_name"] = "${{ matrix.module }}-${{ matrix.variant }}-v${{ needs.version.outputs.version }}.apk"
-                    ["asset_content_type"] = "application/zip"
-                }
-            }
-        }  
-    }
-    ["publish-release-aab"] = new Job {
-        strategy = new JobStrategy {
-            matrix = new Mapping {
-                ["module"] = modules
-                ["variant"] = aabBuildDescriptors
-            }
-        }
-        needs = new Listing {
-            "version"
-            "release"
-            "build-aab"
-        }
-        steps = new Listing {
-            new ActionStep {
-                uses = "actions/download-artifact@master"
-                with = new Mapping {
-                    ["name"] = "${{ matrix.module }}-${{ matrix.variant }}-aab"
-                    ["path"] = "./"
-                }
-            }
-            new ActionStep {
-                name = "Upload Artifact to Release"
-                uses = "actions/upload-release-asset@v1"
-                env = new Mapping {
-                    ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
-                }
-                with = new Mapping {
-                    ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
-                    ["asset_path"] = "./${{ matrix.module }}-${{ matrix.variant }}.aab"
-                    ["asset_name"] = "${{ matrix.module }}-${{ matrix.variant }}-v${{ needs.version.outputs.version }}.aab"
-                    ["asset_content_type"] = "application/zip"
-                }
-            }
-        }  
-    }
+    ["publish-apk-to-release"] = releaseJob(
+        apkBuildDescriptors,
+        "apk"
+    )
+    ["publish-aab-to-release"] = releaseJob(
+        aabBuildDescriptors,
+        "aab"
+    )
 }.toMap().filter((k,v) -> v != null).toMapping()
