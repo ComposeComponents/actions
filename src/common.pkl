@@ -40,3 +40,17 @@ function gradle(
         ["arguments"] = "\(command)"
     }
 }
+
+function signApp(path: String): actions.ActionStep = new actions.ActionStep {
+    id = "sign"
+    uses = "ilharp/sign-android-release@v1"
+    name = "Sign app"
+    with = new Mapping {
+        ["releaseDir"] = path
+        ["signingKey"] = "${{ secrets.SIGNING_KEY }}"
+        ["keyAlias"] = "${{ secrets.ALIAS }}"
+        ["keyStorePassword"] = "${{ secrets.KEY_STORE_PASSWORD }}"
+        ["keyPassword"] = "${{ secrets.KEY_PASSWORD }}"
+        ["buildToolsVersion"] = "33.0.0"
+    }
+}

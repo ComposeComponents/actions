@@ -1,17 +1,100 @@
 extends "src/base.pkl"
 import "src/common.pkl"
 
+class BuildDescriptor {
+    variant: String
+    flavor: String?
+    release: Boolean
+
+    function full() = if (flavor == null) variant.capitalize() else "\(flavor.capitalize())\(variant.capitalize())"
+    function path() = if (flavor == null) variant else "\(flavor)/\(variant)"
+    function name() = if (flavor == null) variant else "\(flavor)-\(variant)"
+}
+
+local function generateMatrixInclude(descriptors: List<BuildDescriptor>): Listing<Mapping<String, Any>> = new Listing {
+    for (descriptor in descriptors) {
+        new Mapping {
+            ["build-command"] = descriptor.full()
+            ["variant"] = descriptor.variant
+            ["flavor"] = descriptor.flavor
+            ["release"] = descriptor.release
+            ["path"] = descriptor.path()
+            ["name"] = descriptor.name()
+        }
+    }
+}
+
+local function buildJob(
+    descriptors: List<BuildDescriptor>, 
+    extension: String, 
+    command: String, 
+    folder: String
+) = new Job {
+    strategy = new JobStrategy {
+        matrix = new Mapping {
+            ["module"] = modules
+            ["variant"] = descriptors.map((e) -> e.full())
+            ["include"] = generateMatrixInclude(descriptors)
+        }
+    }
+    needs = new Listing {
+        "version"
+    }
+    steps = new Listing {
+        common.checkout
+        common.setupJdk
+        (common.gradle(
+            "Build", 
+            "${{ matrix.module }}:\(command)${{ matrix.build-command }}"
+        )) {
+            env = new Mapping {
+                ["ORG_GRADLE_PROJECT_version"] = "${{ needs.version.outputs.version }}"
+                ["ORG_GRADLE_PROJECT_versionCode"] = "${{ needs.version.outputs.versionCode }}"
+            }
+        }
+        (common.signApp("./${{ matrix.module }}/build/outputs/\(folder)/${{ matrix.path }}/")) {
+            `if` = "${{ matrix.release }}"
+        }
+        new CommandStep {
+            name = "Rename \(extension)"
+            run = "mv ${{steps.sign_app.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+            `if` = "${{ matrix.release }}"
+        }
+        new CommandStep {
+            name = "Rename \(extension)"
+            run = "mv ./${{ matrix.module }}/build/outputs/\(folder)/${{ matrix.path }}/${{ matrix.module }}-${{ matrix.name }}.\(extension) ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+            `if` = "${{ !matrix.release }}"
+        }
+        new ActionStep {
+            uses = "actions/upload-artifact@master"
+            with = new Mapping {
+                ["name"] = "${{ matrix.module }}-${{ matrix.name }}-\(extension)"
+                ["path"] = "./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+            }
+        }
+    }
+}
+
+local const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
+    variant = "release"
+    release = true
+}
+local const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
+    variant = "debug"
+    release = false
+}
+
 hidden modules: List<String> = List(
     "app"
 )
 
-hidden apkVariants: List<String> = List(
-    "debug",
-    "release"
+hidden apkBuildDescriptors: List<BuildDescriptor> = List(
+    DEBUG_BUILD_DESCRIPTOR,
+    RELEASE_BUILD_DESCRIPTOR
 )
 
-hidden aabVariants: List<String> = List(
-    "release"
+hidden aabBuildDescriptors: List<BuildDescriptor> = List(
+    RELEASE_BUILD_DESCRIPTOR
 )
 
 name = "Build App"
@@ -66,103 +149,18 @@ jobs = new Mapping {
             }
         }
     }
-    ["build-apk"] = new Job {
-        strategy = new JobStrategy {
-            matrix = new Mapping {
-                ["module"] = modules
-                ["variant"] = apkVariants
-            }
-        }
-        needs = new Listing {
-            "version"
-        }
-        steps = new Listing {
-            common.checkout
-            common.setupJdk
-            new ActionStep {
-                id = "variantCap"
-                uses = "ASzc/change-string-case-action@v1"
-                with = new Mapping {
-                    ["string"] = "${{ matrix.variant }}"
-                }
-            }
-            (common.gradle(
-                "Build", 
-                "${{ matrix.module }}:build${{ steps.variantCap.outputs.capitalized }}"
-            )) {
-                env = new Mapping {
-                    ["ORG_GRADLE_PROJECT_version"] = "${{ needs.version.outputs.version }}"
-                    ["ORG_GRADLE_PROJECT_versionCode"] = "${{ needs.version.outputs.versionCode }}"
-                }
-            }
-            new CommandStep {
-                name = "Rename APK"
-                run = "mv ./${{ matrix.module }}/build/outputs/apk/${{ matrix.module }}-${{ matrix.variant }}.apk ./${{ matrix.module }}-${{ matrix.variant }}.apk"
-            }
-            new ActionStep {
-                uses = "actions/upload-artifact@master"
-                with = new Mapping {
-                    ["name"] = "${{ matrix.module }}-${{ matrix.variant }}-apk"
-                    ["path"] = "./${{ matrix.module }}-${{ matrix.variant }}.apk"
-                }
-            }
-        }
-    }
-    ["build-aab"] = new Job {
-        strategy = new JobStrategy {
-            matrix = new Mapping {
-                ["module"] = modules
-                ["variant"] = aabVariants
-            }
-        }
-        needs = new Listing {
-            "version"
-        }
-        steps = new Listing {
-            common.checkout
-            common.setupJdk
-            new ActionStep {
-                id = "variantCap"
-                uses = "ASzc/change-string-case-action@v1"
-                with = new Mapping {
-                    ["string"] = "${{ matrix.variant }}"
-                }
-            }
-            (common.gradle(
-                "Build", 
-                "${{ matrix.module }}:bundle${{ steps.variantCap.outputs.capitalized }}"
-            )) {
-                env = new Mapping {
-                    ["ORG_GRADLE_PROJECT_version"] = "${{ needs.version.outputs.version }}"
-                    ["ORG_GRADLE_PROJECT_versionCode"] = "${{ needs.version.outputs.versionCode }}"
-                }
-            }
-            new ActionStep {
-                id = "sign"
-                uses = "ilharp/sign-android-release@v1"
-                name = "Sign AAB"
-                with = new Mapping {
-                    ["releaseDir"] = "./${{ matrix.module }}/build/outputs/bundle/release/"
-                    ["signingKey"] = "${{ secrets.SIGNING_KEY }}"
-                    ["keyAlias"] = "${{ secrets.ALIAS }}"
-                    ["keyStorePassword"] = "${{ secrets.KEY_STORE_PASSWORD }}"
-                    ["keyPassword"] = "${{ secrets.KEY_PASSWORD }}"
-                    ["buildToolsVersion"] = "33.0.0"
-                }
-            }
-            new CommandStep {
-                name = "Rename APK"
-                run = "mv ${{steps.sign_app.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.variant }}.aab"
-            }
-            new ActionStep {
-                uses = "actions/upload-artifact@master"
-                with = new Mapping {
-                    ["name"] = "${{ matrix.module }}-${{ matrix.variant }}-aab"
-                    ["path"] = "./${{ matrix.module }}-${{ matrix.variant }}.aab"
-                }
-            }
-        }
-    }
+    ["build-apk"] = buildJob(
+        apkBuildDescriptors,
+        "apk",
+        "build",
+        "apk"
+    )
+    ["build-aab"] = buildJob(
+        aabBuildDescriptors,
+        "aab",
+        "bundle",
+        "bundle"
+    )
     ["release"] = new Job {
         needs = new Listing {
             "version"
@@ -183,7 +181,7 @@ jobs = new Mapping {
         strategy = new JobStrategy {
             matrix = new Mapping {
                 ["module"] = modules
-                ["variant"] = apkVariants
+                ["variant"] = apkBuildDescriptors
             }
         }
         needs = new Listing {
@@ -218,7 +216,7 @@ jobs = new Mapping {
         strategy = new JobStrategy {
             matrix = new Mapping {
                 ["module"] = modules
-                ["variant"] = aabVariants
+                ["variant"] = aabBuildDescriptors
             }
         }
         needs = new Listing {
