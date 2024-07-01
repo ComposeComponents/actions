@@ -6,17 +6,21 @@ class BuildDescriptor {
     variant: String
     flavor: String?
     release: Boolean
+    packageName: String?
 
-    function full() = if (flavor == null) variant.capitalize() else "\(flavor.capitalize())\(variant.capitalize())"
+    function full() =
+        let (variantName = if (variant == "debug") "" else variant.capitalize())
+        let (flavorName = if (flavor == null) "" else flavor.capitalize())
+        "\(flavorName)\(variantName)"
     function path() = if (flavor == null) variant else "\(flavor)/\(variant)"
     function name() = if (flavor == null) variant else "\(flavor)-\(variant)"
 }
 
-const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
+hidden const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
     variant = "release"
     release = true
 }
-const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
+hidden const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
     variant = "debug"
     release = false
 }
