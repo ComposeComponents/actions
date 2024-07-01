@@ -234,7 +234,7 @@ jobs = new Mapping {
         ) new Job {
             strategy = new JobStrategy {
                 matrix = new Mapping {
-                    ["module"] = configurations.map((c) -> c.appModule)
+                    ["module"] = configurations.map((c) -> c.appModule).distinct
                     ["include"] = new Listing {
                         for (c in configurations) {
                             new Mapping {
