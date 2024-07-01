@@ -10,7 +10,8 @@ hidden modules: List<String> = List(
 hidden versionNumberOffset = 0
 hidden gradleVersionNameName = "version"
 hidden gradleVersionCodeName = "versionCode"
-hidden publishToInternalReleaseTrack = false
+
+hidden releaseTrackPublishingConfiguration: List<AppReleaseDescriptor>(isDistinctBy((e) -> List(e.appModule, e.flavor))) = List()
 
 hidden apkBuildDescriptors: List<BuildDescriptor> = List(
     DEBUG_BUILD_DESCRIPTOR,
@@ -31,7 +32,6 @@ local function generateMatrixInclude(descriptors: List<BuildDescriptor>): Listin
             ["release"] = descriptor.release
             ["path"] = descriptor.path()
             ["name"] = descriptor.name()
-            ["package"] = descriptor.packageName
         }
     }
 }
@@ -227,16 +227,26 @@ jobs = new Mapping {
         aabBuildDescriptors,
         "aab"
     )
-    ["publish-aab-to-internal-release-track"] = 
-        let(descriptors = aabBuildDescriptors.filter((d) ->  d.release && d.packageName != null))
+    ["publish-aab-to-play-release-track"] = 
+        let(configurations = releaseTrackPublishingConfiguration.filter((c) -> modules.contains(c.appModule)))
         if(
-            publishToInternalReleaseTrack &&
-            descriptors.length > 0
+            configurations.length > 0
         ) new Job {
             strategy = new JobStrategy {
                 matrix = new Mapping {
-                    ["module"] = modules
-                    ["include"] = generateMatrixInclude(descriptors)
+                    ["module"] = configurations.map((c) -> c.appModule)
+                    ["include"] = new Listing {
+                        for (c in configurations) {
+                            new Mapping {
+                                ["module"] = c.appModule
+                                ["package"] = c.packageName
+                                ["track"] = c.track
+                                ["name"] = aabBuildDescriptors.find(
+                                    (d) -> d.release && d.flavor == c.flavor
+                                ).name()
+                            }
+                        }
+                    }
                 }
             }
             needs = new Listing {
@@ -258,7 +268,7 @@ jobs = new Mapping {
                         ["serviceAccountJsonPlainText"] = "${{ secrets.SERVICE_ACCOUNT_JSON }}"
                         ["packageName"] = "${{ matrix.package }}"
                         ["releaseFiles"] = "./${{ matrix.module }}-${{ matrix.name }}.aab"
-                        ["track"] = "internal"
+                        ["track"] = "${{ matrix.track }}"
                         ["changesNotSentForReview"] = true
                     }
                 }

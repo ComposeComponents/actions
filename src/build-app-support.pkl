@@ -6,7 +6,6 @@ class BuildDescriptor {
     variant: String
     flavor: String?
     release: Boolean
-    packageName: String?
 
     function full() =
         let (variantName = if (variant == "debug") "" else variant.capitalize())
@@ -23,4 +22,13 @@ hidden const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
 hidden const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
     variant = "debug"
     release = false
+}
+
+typealias ReleaseTrack = "internal" | "alpha" | "beta" | "production"
+
+class AppReleaseDescriptor {
+    appModule: String
+    flavor: String?
+    packageName: String
+    track: ReleaseTrack = "internal"
 }
