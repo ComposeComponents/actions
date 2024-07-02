@@ -31,7 +31,10 @@ jobs:
         new_number=$((current_run_number))
         echo "versionCode=${new_number}" >> $GITHUB_OUTPUT
     - name: Generate Job Summary
-      run: 'echo "# Version Info\nSemantic Version: ${{ steps.gitversion.outputs.semVer }}\nVersion Number: ${{ steps.run-number.outputs.versionCode }}" >> $GITHUB_STEP_SUMMARY'
+      run: |-
+        echo "# Version Info
+        Semantic Version: ${{ steps.gitversion.outputs.semVer }}
+        Version Number: ${{ steps.run-number.outputs.versionCode }}" >> $GITHUB_STEP_SUMMARY
   release:
     permissions:
       contents: write
