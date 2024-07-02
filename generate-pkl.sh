@@ -1,0 +1,1 @@
+pkl eval -f yaml .github/workflows/upload-package.pkl -o .github/workflows/upload-package.yml
