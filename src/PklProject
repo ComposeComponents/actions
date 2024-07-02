@@ -1,7 +1,7 @@
 amends "pkl:project"
 
 package {
-  name = "android-pkl-actions"
+  name = "actions"
   baseUri = "package://components.emilym.cl/actions" 
   version = read("file:src/.version").text.trim()
   packageZipUrl = "https://components.emilym.cl/actions/\(name)@\(version).zip"
