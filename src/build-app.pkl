@@ -2,16 +2,13 @@ open module buildApp
 extends "common/build-app-support.pkl"
 import "common/common.pkl"
 
-
-hidden modules: List<String> = List(
-    "app"
-)
-
 hidden versionNumberOffset = 0
 hidden gradleVersionNameName = "version"
 hidden gradleVersionCodeName = "versionCode"
 
 hidden releaseTrackPublishingConfiguration: List<AppReleaseDescriptor>(isDistinctBy((e) -> List(e.appModule, e.flavor))) = List()
+
+hidden buildUniversalApk = false
 
 hidden apkBuildDescriptors: List<BuildDescriptor> = List(
     DEBUG_BUILD_DESCRIPTOR,
@@ -23,15 +20,19 @@ hidden aabBuildDescriptors: List<BuildDescriptor> = List(
 )
 
 // These functions should be in another file but pkl has a bug
-local function generateMatrixInclude(descriptors: List<BuildDescriptor>): Listing<Mapping<String, Any>> = new Listing {
+local function generateMatrixInclude(
+    descriptors: List<BuildDescriptor>,
+    extras: Mapping<BuildDescriptor, Mapping<String, Any>>
+): Listing<Mapping<String, Any>> = new Listing {
     for (descriptor in descriptors) {
         new Mapping {
-            ["build-command"] = descriptor.full()
+            ["module"] = descriptor.appModule
             ["variant"] = descriptor.variant
             ["flavor"] = descriptor.flavor
             ["release"] = descriptor.release
             ["path"] = descriptor.path()
             ["name"] = descriptor.name()
+            ...extras.getOrNull(descriptor) ?? new Mapping {}
         }
     }
 }
@@ -39,14 +40,22 @@ local function generateMatrixInclude(descriptors: List<BuildDescriptor>): Listin
 local function buildJob(
     descriptors: List<BuildDescriptor>, 
     extension: String, 
-    command: String, 
+    command: (BuildDescriptor) -> String, 
     folder: String
 ) = new Job {
     strategy = new JobStrategy {
         matrix = new Mapping {
-            ["module"] = modules
-            ["build-command"] = descriptors.map((e) -> e.full())
-            ["include"] = generateMatrixInclude(descriptors)
+            ["module"] = descriptors.map((d) -> d.appModule).distinct
+            ["include"] = generateMatrixInclude(
+                descriptors,
+                new Mapping {
+                    for (descriptor in descriptors) {
+                        [descriptor] = new Mapping {
+                            ["build-command"] = command.apply(descriptor)
+                        }
+                    }
+                }
+            )
         }
     }
     needs = new Listing {
@@ -57,7 +66,7 @@ local function buildJob(
         common.setupJdk
         (common.gradle(
             "Build", 
-            "${{ matrix.module }}:\(command)${{ matrix.build-command }}"
+            "${{ matrix.module }}:${{ matrix.build-command }}"
         )) {
             env = new Mapping {
                 ["ORG_GRADLE_PROJECT_\(gradleVersionNameName)"] = "${{ needs.version.outputs.version }}"
@@ -93,9 +102,8 @@ local function releaseJob(
 ) = new Job {
     strategy = new JobStrategy {
         matrix = new Mapping {
-            ["module"] = modules
-            ["build-command"] = descriptors.map((e) -> e.full())
-            ["include"] = generateMatrixInclude(descriptors)
+            ["module"] = descriptors.map((d) -> d.appModule).distinct
+            ["include"] = generateMatrixInclude(descriptors, new Mapping {})
         }
     }
     needs = new Listing {
@@ -187,16 +195,25 @@ jobs = new Mapping {
             }
         }
     }
-    ["build-apk"] = buildJob(
-        apkBuildDescriptors,
-        "apk",
-        "build",
-        "apk"
-    )
+    ["build-apk"] = 
+        if (!buildUniversalApk)
+            buildJob(
+                apkBuildDescriptors,
+                "apk",
+                (e) -> "build\(e.buildName(false))",
+                "apk"
+            )
+        else 
+            buildJob(
+                apkBuildDescriptors,
+                "apk",
+                (e) -> "package\(e.buildName(true))UniversalApk",
+                "apk_from_bundle"
+            )
     ["build-aab"] = buildJob(
         aabBuildDescriptors,
         "aab",
-        "bundle",
+        (e) -> "bundle\(e.buildName(false))",
         "bundle"
     )
     ["release"] = new Job {
@@ -224,7 +241,7 @@ jobs = new Mapping {
         "aab"
     )
     ["publish-aab-to-play-release-track"] = 
-        let(configurations = releaseTrackPublishingConfiguration.filter((c) -> modules.contains(c.appModule)))
+        let(configurations = releaseTrackPublishingConfiguration)
         if(
             configurations.length > 0
         ) new Job {
@@ -238,7 +255,7 @@ jobs = new Mapping {
                                 ["package"] = c.packageName
                                 ["track"] = c.track
                                 ["name"] = aabBuildDescriptors.find(
-                                    (d) -> d.release && d.flavor == c.flavor
+                                    (d) -> d.release && d.flavor == c.flavor && d.appModule == c.appModule
                                 ).name()
                             }
                         }

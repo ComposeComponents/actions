@@ -3,12 +3,16 @@ extends "./base.pkl"
 import "./common.pkl"
 
 class BuildDescriptor {
+    appModule: String = "app"
     variant: String
     flavor: String?
-    release: Boolean
+    release: Boolean = variant == "release"
 
-    function full() =
-        let (variantName = if (variant == "debug") "" else variant.capitalize())
+    @Deprecated { message = "Replace with buildName()" }
+    function full() = buildName(false)
+
+    function buildName(alwaysIncludeDebug: Boolean) =
+        let (variantName = if (variant == "debug" && !alwaysIncludeDebug) "" else variant.capitalize())
         let (flavorName = if (flavor == null) "" else flavor.capitalize())
         "\(flavorName)\(variantName)"
     function path() = if (flavor == null) variant else "\(flavor)/\(variant)"
@@ -16,18 +20,18 @@ class BuildDescriptor {
 }
 
 hidden const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
+    appModule = "app"
     variant = "release"
-    release = true
 }
 hidden const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
+    appModule = "app"
     variant = "debug"
-    release = false
 }
 
 typealias ReleaseTrack = "internal" | "alpha" | "beta" | "production"
 
 class AppReleaseDescriptor {
-    appModule: String
+    appModule: String = "app"
     flavor: String?
     packageName: String
     track: ReleaseTrack = "internal"
