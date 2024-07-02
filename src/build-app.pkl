@@ -69,7 +69,7 @@ local function buildJob(
         }
         new CommandStep {
             name = "Rename \(extension)"
-            run = "mv ${{steps.sign_app.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+            run = "mv ${{steps.sign.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
             `if` = "${{ matrix.release }}"
         }
         new CommandStep {
