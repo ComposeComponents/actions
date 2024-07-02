@@ -69,7 +69,7 @@ local function buildJob(
         }
         new CommandStep {
             name = "Rename \(extension)"
-            run = "mv ${{steps.sign_app.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+            run = "mv ${{steps.sign.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
             `if` = "${{ matrix.release }}"
         }
         new CommandStep {
@@ -183,7 +183,7 @@ jobs = new Mapping {
             }
             new CommandStep {
                 name = "Generate Job Summary"
-                run = "echo \"# Version Info\\nSemantic Version: ${{ steps.gitversion.outputs.semVer }}\\nVersion Number: ${{ steps.run-number.outputs.versionCode }}\" >> $GITHUB_STEP_SUMMARY"
+                run = "echo \"# Version Info\nSemantic Version: ${{ steps.gitversion.outputs.semVer }}\nVersion Number: ${{ steps.run-number.outputs.versionCode }}\" >> $GITHUB_STEP_SUMMARY"
             }
         }
     }
