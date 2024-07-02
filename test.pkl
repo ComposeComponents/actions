@@ -1,5 +1,0 @@
-extends "src/simple-gradle.pkl"
-
-jobName = "test"
-gradleTask = "test"
-name = "Test"

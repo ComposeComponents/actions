@@ -1,5 +1,5 @@
-extends "src/base.pkl"
-import "src/common.pkl"
+extends "common/base.pkl"
+import "common/common.pkl"
 
 hidden modules: List<String>
 hidden sonatypeEnabled = true

@@ -1,6 +1,6 @@
 open module buildApp
-extends "src/build-app-support.pkl"
-import "src/common.pkl"
+extends "common/build-app-support.pkl"
+import "common/common.pkl"
 
 
 hidden modules: List<String> = List(
