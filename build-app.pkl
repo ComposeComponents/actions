@@ -174,10 +174,6 @@ jobs = new Mapping {
                 }
             }
             new CommandStep {
-                name = "Display SemVer"
-                run = "echo \"SemVer: ${{ steps.gitversion.outputs.semVer }}\""
-            }
-            new CommandStep {
                 id = "run-number"
                 run = """
                 current_run_number=${{ github.run_number }}
@@ -186,8 +182,8 @@ jobs = new Mapping {
                 """
             }
             new CommandStep {
-                name = "Display Version Code"
-                run = "echo \"Version Code: ${{ steps.run-number.outputs.versionCode }}\""
+                name = "Generate Job Summary"
+                run = "echo \"# Version Info\\nSemantic Version: ${{ steps.gitversion.outputs.semVer }}\\nVersion Number: ${{ steps.run-number.outputs.versionCode }}\" >> $GITHUB_STEP_SUMMARY"
             }
         }
     }
@@ -273,7 +269,7 @@ jobs = new Mapping {
                     }
                 }
                 new CommandStep {
-                    run = "echo \"Internal release url: ${{ steps.google-play.outputs.internalSharingDownloadUrl }}\""
+                    run = "echo \"Internal release url: ${{ steps.google-play.outputs.internalSharingDownloadUrl }}\" >> $GITHUB_STEP_SUMMARY"
                 }
             }
         } else null
