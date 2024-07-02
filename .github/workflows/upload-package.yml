@@ -74,6 +74,6 @@ jobs:
         path: src/.version
         write-mode: overwrite
         contents: ${{ needs.version.outputs.version }}
-    - uses: BenMMcLean/pkl-upload-package@v1.1.0
+    - uses: BenMMcLean/pkl-upload-package@v1.1.1
       with:
         input-directory: src
