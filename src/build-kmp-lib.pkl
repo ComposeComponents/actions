@@ -1,0 +1,191 @@
+open module buildKmpLib
+extends "common/base.pkl"
+import "common/common.pkl"
+import "common/target.pkl" as targets
+
+hidden modules: List<String>
+hidden sonatypeEnabled = true
+
+hidden iosBuildTargets = new Listing {
+    for (moduleName in modules) {
+        for (iosTarget in targets.iosTargets) {
+            targets.buildIosKmpTarget(
+                moduleName,
+                "./\(moduleName)/build",
+                iosTarget
+            )
+        }
+    }
+}
+hidden androidBuildTargets = new Listing {
+    for (moduleName in modules) {
+        targets.buildAndroidKmpTarget(
+            moduleName,
+            "./\(moduleName)/build"
+        )
+    }
+}
+
+name = "Build Library"
+
+on = new On {
+    push = new Push {
+        branches = new Listing {
+            "main"
+            "develop"
+            "release/**"
+        }
+    }
+    pull_request = new PullRequest {
+        branches = new Listing {
+            "main"
+            "develop"
+        }
+    }
+}
+
+permissions = new Mapping {
+    ["contents"] = "write"
+}
+
+jobs = new Mapping {
+    ["version"] = new Job {
+        outputs = new Mapping {
+            ["version"] = "${{ steps.gitversion.outputs.semVer }}"
+            ["versionCode"] = "${{ steps.run_number.outputs.versionCode }}"
+        }
+        steps = new Listing {
+            common.checkout
+            new ActionStep {
+                name = "Install GitVersion"
+                uses = "gittools/actions/gitversion/setup@v0.9.6"
+                with = new Mapping {
+                    ["versionSpec"] = "5.x"
+                }
+            }
+            new ActionStep {
+                name = "Use GitVersion"
+                id = "gitversion"
+                uses = "gittools/actions/gitversion/execute@v0.9.6"
+                with = new Mapping {
+                    ["useConfigFile"] = true
+                    ["configFilePath"] = "./gitversion.yml"
+                }
+            }
+            new CommandStep {
+                name = "Display SemVer"
+                run = "echo \"SemVer: ${{ steps.gitversion.outputs.semVer }}\""
+            }
+        }
+    }
+    ["build-android"] = targets.buildTargetJob(
+        androidBuildTargets,
+        "ubuntu-latest"
+    )
+    ["build-ios"] = targets.buildTargetJob(
+        iosBuildTargets,
+        "macos-latest"
+    )
+    ["release"] = new Job {
+        needs = new Listing {
+            "version"
+        }
+        `if` = "github.event_name != 'pull_request'"
+        permissions = new Mapping {
+            ["contents"] = "write"
+        }
+        outputs = new Mapping {
+            ["upload_url"] = "${{ steps.create_release.outputs.upload_url }}"
+        }
+        steps = new Listing {
+            common.checkout
+            common.create_release
+        }
+    }
+    ["publish-release"] = new Job {
+        strategy = new JobStrategy {
+            matrix = new Mapping {
+                ["artifact"] = new Listing {
+                    for (target in iosBuildTargets) {
+                        target.toArtifact()
+                    }
+                    for (target in androidBuildTargets) {
+                        target.toArtifact()
+                    }
+                }
+            }
+        }
+        needs = new Listing {
+            "version"
+            "release"
+            "build-android"
+            "build-ios"
+        }
+        steps = new Listing {
+            new ActionStep {
+                uses = "actions/download-artifact@master"
+                with = new Mapping {
+                    ["name"] = "${{ matrix.artifact.key }}"
+                    ["path"] = "./"
+                }
+            }
+            new CommandStep {
+                name = "Add version to file name"
+                run = """
+                    file="${{ matrix.artifact.name }}"
+                    echo "NEW_NAME=${file%%.*}-v${{ needs.version.outputs.version }}.${file#*.}" >> $GITHUB_ENV
+                    """
+            }
+            new ActionStep {
+                name = "Upload Artifact to Release"
+                uses = "actions/upload-release-asset@v1"
+                env = new Mapping {
+                    ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
+                }
+                with = new Mapping {
+                    ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
+                    ["asset_path"] = "./${{ matrix.artifact.name }}"
+                    ["asset_name"] = "${{ env.NEW_NAME }}"
+                    ["asset_content_type"] = "${{ matrix.artifact.mimeType }}"
+                }
+            }
+        }
+    }
+    ["publish-sonatype"] = if(sonatypeEnabled) new Job {
+        `runs-on` = "macos-latest"
+        strategy = new JobStrategy {
+            matrix = new Mapping {
+                ["module"] = modules
+            }
+        }
+        permissions = new Mapping {
+            ["contents"] = "read"
+        }
+        needs = new Listing {
+            "version"
+        }
+        `if` = "github.ref == 'refs/heads/main'"
+        steps = new Listing {
+            common.checkout
+            common.setupJdk
+            (common.gradle(
+                "Build",
+                """
+                -Pversion=${{ needs.version.outputs.version }}
+                -Ppom.url="https://github.com/${{ github.repository }}"
+                -Ppom.scm.connection="scm:git:git://github.com/${{ github.repository }}"
+                -Ppom.scm.developerConnection="scm:git:ssh://github.com/${{ github.repository }}"
+                -Ppom.scm.url="https://github.com/${{ github.repository }}"
+                ${{ matrix.module }}:publishAndReleaseToMavenCentral --no-configuration-cache
+                """
+            )) {
+                env = new Mapping {
+                    ["ORG_GRADLE_PROJECT_mavenCentralPassword"] = "${{ secrets.SONATYPE_PASSWORD }}"
+                    ["ORG_GRADLE_PROJECT_mavenCentralUsername"] = "${{ secrets.SONATYPE_USERNAME }}"
+                    ["ORG_GRADLE_PROJECT_signingInMemoryKey"] = "${{ secrets.PGP_SECRET_KMP }}"
+                    ["ORG_GRADLE_PROJECT_signingInMemoryKeyPassword"] = "${{ secrets.PGP_PASSPHRASE }}"
+                }
+            }
+        }
+    } else null
+}.toMap().filter((k,v) -> v != null).toMapping()

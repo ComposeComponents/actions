@@ -1,4 +1,4 @@
 open module base
-extends "package://github.com/BenMMcLean/pkl-github-actions/releases/download/v0.1.0-alpha.60/pkl-github-actions@0.1.0-alpha.60#/actions.pkl"
+extends "base-import.pkl"
 
 hidden modules: List<String>
