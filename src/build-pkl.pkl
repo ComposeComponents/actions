@@ -5,6 +5,7 @@ hidden modules: List<String>
 
 hidden versionUpdateCommit: Boolean = false
 hidden extraTags: Boolean = true
+hidden uploadToGhPages = false
 
 local overwriteFile = new CommandStep {
     run = """
@@ -117,4 +118,28 @@ jobs = new Mapping {
             }
         }
     }
+    ...(if (uploadToGhPages)
+        new Mapping {
+            ["publish-project"] = new Job {
+                needs = new Listing {
+                    "version"
+                    "release"
+                }
+                permissions = new Mapping {
+                    ["contents"] = "write"
+                }
+                steps = new Listing {
+                    common.checkout
+                    overwriteFile
+                    new ActionStep {
+                        name = "Upload to pages"
+                        uses = "emilymclean/pkl-upload-package@v1.1.0"
+                        with = new Mapping {
+                            ["input-directory"] = "src"
+                        }
+                    }
+                }
+            }
+        } 
+    else new Mapping {})
 }.toMap().filter((k,v) -> v != null).toMapping()
