@@ -8,5 +8,5 @@ A collection of useful Github Workflows for use building Android apps and librar
 
 Make a new source file amending `strings.pkl` and override `localizable`:
 ```pkl
-amends "package://components.emilym.cl/actions/actions@<version>.zip#/<workflow>.pkl"
+amends "package://components.emilym.cl/actions/actions@<version>#/<workflow>.pkl"
 ```
