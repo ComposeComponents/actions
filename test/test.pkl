@@ -1,0 +1,12 @@
+amends "../src/render.pkl"
+
+workflows = new Listing {
+    import("../src/build-lib.pkl")
+    import("../src/build-app.pkl")
+    (import("../src/build-kmp-lib.pkl")) {
+        name = "Build KMP Library"
+    }
+    import("../src/build-pkl.pkl")
+    import("../src/lint.pkl")
+    import("../src/test.pkl")
+}

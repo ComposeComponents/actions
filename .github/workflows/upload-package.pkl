@@ -23,7 +23,7 @@ jobs = new Mapping {
             common.checkout
             new ActionStep {
                 name = "Install GitVersion"
-                uses = "gittools/actions/gitversion/setup@v0.9.6"
+                uses = "gittools/actions/gitversion/setup@v3.0.0"
                 with = new Mapping {
                     ["versionSpec"] = "5.x"
                 }
@@ -31,7 +31,7 @@ jobs = new Mapping {
             new ActionStep {
                 name = "Use GitVersion"
                 id = "gitversion"
-                uses = "gittools/actions/gitversion/execute@v0.9.6"
+                uses = "gittools/actions/gitversion/execute@v3.0.0"
                 with = new Mapping {
                     ["useConfigFile"] = true
                     ["configFilePath"] = "./gitversion.yml"
@@ -64,7 +64,7 @@ jobs = new Mapping {
         }
         steps = new Listing {
             common.checkout
-            common.create_release
+            ...common.create_release
         }
     }
     ["upload"] = new Job {
@@ -77,16 +77,13 @@ jobs = new Mapping {
         }
         steps = new Listing {
             common.checkout
-            new ActionStep {
-                uses = "DamianReeves/write-file-action@master"
-                with = new Mapping {
-                    ["path"] = "src/.version"
-                    ["write-mode"] = "overwrite"
-                    ["contents"] = "${{ needs.version.outputs.version }}"
-                }
+            new CommandStep {
+                run = """
+                echo "${{ needs.version.outputs.version }}" > src/.version
+                """
             }
             new ActionStep {
-                uses = "BenMMcLean/pkl-upload-package@v1.1.1"
+                uses = "emilymclean/pkl-upload-package@v1.1.1"
                 with = new Mapping {
                     ["input-directory"] = "src"
                 }

@@ -3,3 +3,5 @@ src/*.yml
 .DS_Store
 
 src/build-app-test.pkl
+
+test/out/

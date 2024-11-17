@@ -77,14 +77,13 @@ function buildTargetJob(targets: Listing<KMPTarget>, runPlatform: String) = new 
   steps = new Listing {
     common.checkout
     common.setupJdk
-    (common.gradle(
+    ...common.gradle(
       "Build",
-      "${{ matrix.configuration.buildCommand }}"
-    )) {
-      env = new Mapping {
+      "${{ matrix.configuration.buildCommand }}",
+      new Mapping {
         ["ORG_GRADLE_PROJECT_version"] = "${{ needs.version.outputs.version }}"
       }
-    }
+    )
     new base.CommandStep {
       name = "Rename Artifact"
       run = "mv ${{ matrix.configuration.filesystemLocation }} ./${{ matrix.configuration.artifactName }}"
@@ -95,7 +94,7 @@ function buildTargetJob(targets: Listing<KMPTarget>, runPlatform: String) = new 
       run = "zip -r ${{ matrix.configuration.artifactName }}.zip ./${{ matrix.configuration.artifactName }}"
     }
     new base.ActionStep {
-      uses = "actions/upload-artifact@master"
+      uses = "actions/upload-artifact@v4"
       with = new Mapping {
         ["name"] = "${{ matrix.configuration.artifactKey }}"
         ["path"] = "./${{ matrix.configuration.artifactName }}${{ matrix.configuration.needsZip && '.zip' || '' }}"
