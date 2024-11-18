@@ -47,11 +47,12 @@ function gradle(
         name = "Setup gradle"
         uses = "gradle/actions/setup-gradle@v3"
     }
-    new actions.CommandStep {
-        name = "\(actionName) with Gradle"
-        run = "./gradlew \(command)"
-        env = _env
-    }
+    let(alteredCommand = command.replaceAll("\n", " \\\n"))
+        new actions.CommandStep {
+            name = "\(actionName) with Gradle"
+            run = "./gradlew \(alteredCommand)"
+            env = _env
+        }
 }
 
 function signApp(path: String): actions.ActionStep = new actions.ActionStep {
