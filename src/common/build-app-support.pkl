@@ -3,23 +3,50 @@ extends "./base.pkl"
 import "./common.pkl"
 
 class BuildDescriptor {
+    appModule: String
     variant: String
     flavor: String?
     release: Boolean
+    instant: Boolean = false
+    hasMappingFile: Boolean = false
 
-    function full() =
-        let (variantName = if (variant == "debug") "" else variant.capitalize())
+    fixed moduleFolder: String = "\(appModule.replaceAll(":", "/"))"
+    fixed outputFolder: String = List(flavor, variant).filterNonNull().join("/")
+
+    fixed full: String =
+        let (variantName = variant.capitalize())
         let (flavorName = if (flavor == null) "" else flavor.capitalize())
         "\(flavorName)\(variantName)"
-    function path() = if (flavor == null) variant else "\(flavor)/\(variant)"
-    function name() = if (flavor == null) variant else "\(flavor)-\(variant)"
+    function path(folder: String) = "./\(moduleFolder)/build/outputs/\(folder)/\(outputFolder)"
+    fixed mappingFile = "./\(moduleFolder)/build/outputs/mapping/\(outputFolder)/mapping.txt"
+    fixed fileName = List(
+        appModule.split(":").last,
+        flavor,
+        variant
+    ).filterNonNull().join("-")
+    fixed artifactName = List(
+        appModule.replaceAll(":", "-"),
+        flavor,
+        variant,
+        if (instant) "instant" else null
+    ).filterNonNull().join("-")
 }
 
-hidden const RELEASE_BUILD_DESCRIPTOR = new BuildDescriptor {
+function releaseBuildDescriptor(_appModule: String, _hasMappingFile: Boolean) = new BuildDescriptor {
+    appModule = _appModule
     variant = "release"
     release = true
+    hasMappingFile = _hasMappingFile
 }
-hidden const DEBUG_BUILD_DESCRIPTOR = new BuildDescriptor {
+function releaseInstantBuildDescriptor(_appModule: String, _hasMappingFile: Boolean) = new BuildDescriptor {
+    appModule = _appModule
+    variant = "release"
+    release = true
+    instant = true
+    hasMappingFile = _hasMappingFile
+}
+function debugBuildDescriptor(_appModule: String) = new BuildDescriptor {
+    appModule = _appModule
     variant = "debug"
     release = false
 }
@@ -28,7 +55,7 @@ typealias ReleaseTrack = "internal" | "alpha" | "beta" | "production"
 
 class AppReleaseDescriptor {
     appModule: String
-    flavor: String?
+    flavor: String? = null
     packageName: String
     track: ReleaseTrack = "internal"
 }

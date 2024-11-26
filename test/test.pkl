@@ -1,8 +1,42 @@
 amends "../src/render.pkl"
+import "../src/common/build-app-support.pkl" as support
 
 workflows = new Listing {
     import("../src/build-lib.pkl")
-    import("../src/build-app.pkl")
+    (import("../src/build-app.pkl")) {
+        apkBuildDescriptors = List(
+            support.debugBuildDescriptor("app"),
+            support.debugBuildDescriptor("feature:thing1"),
+            support.debugBuildDescriptor("feature:thing2"),
+            support.debugBuildDescriptor("feature:thing3")
+        )
+
+        aabBuildDescriptors = List(
+            support.releaseBuildDescriptor("app", false),
+            support.releaseInstantBuildDescriptor("app", true)
+        )
+    }
+    (import("../src/build-app.pkl")) {
+        name = "Build App No Instant"
+
+        apkBuildDescriptors = List(
+            support.debugBuildDescriptor("app"),
+            support.debugBuildDescriptor("feature:thing1"),
+            support.debugBuildDescriptor("feature:thing2"),
+            support.debugBuildDescriptor("feature:thing3")
+        )
+
+        aabBuildDescriptors = List(
+            support.releaseBuildDescriptor("app", false)
+        )
+
+        releaseTrackPublishingConfiguration = List(
+            new support.AppReleaseDescriptor {
+                appModule = "app"
+                packageName = "com.example"
+            }
+        )
+    }
     (import("../src/build-kmp-lib.pkl")) {
         name = "Build KMP Library"
     }

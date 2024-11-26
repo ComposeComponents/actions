@@ -3,98 +3,91 @@ extends "common/build-app-support.pkl"
 import "common/common.pkl"
 
 
-hidden modules: List<String> = List(
-    "app"
-)
+hidden modules: List<String>(length == 0) = List()
 
+hidden iaToolPath: String? = null
 hidden versionNumberOffset = 0
+hidden instantVersionNumberOffset = 0
 hidden gradleVersionNameName = "version"
 hidden gradleVersionCodeName = "versionCode"
 
 hidden releaseTrackPublishingConfiguration: List<AppReleaseDescriptor>(isDistinctBy((e) -> List(e.appModule, e.flavor))) = List()
 
-hidden apkBuildDescriptors: List<BuildDescriptor> = List(
-    DEBUG_BUILD_DESCRIPTOR,
-    RELEASE_BUILD_DESCRIPTOR
-)
+hidden apkBuildDescriptors: List<BuildDescriptor>
+hidden aabBuildDescriptors: List<BuildDescriptor>
 
-hidden aabBuildDescriptors: List<BuildDescriptor> = List(
-    RELEASE_BUILD_DESCRIPTOR
-)
+local hasInstant = aabBuildDescriptors.filter((e) -> e.instant).length > 0
 
-// These functions should be in another file but pkl has a bug
-local function generateMatrixInclude(descriptors: List<BuildDescriptor>): Listing<Mapping<String, Any>> = new Listing {
-    for (descriptor in descriptors) {
-        new Mapping {
-            ["build-command"] = descriptor.full()
-            ["variant"] = descriptor.variant
-            ["flavor"] = descriptor.flavor
-            ["release"] = descriptor.release
-            ["path"] = descriptor.path()
-            ["name"] = descriptor.name()
-        }
-    }
-}
-
-local function buildJob(
-    descriptors: List<BuildDescriptor>, 
-    extension: String, 
-    command: String, 
+function buildJob(
+    descriptors: List<BuildDescriptor>,
+    extension: String,
+    command: String,
     folder: String
 ) = new Job {
     strategy = new JobStrategy {
         matrix = new Mapping {
-            ["module"] = modules
-            ["build-command"] = descriptors.map((e) -> e.full())
-            ["include"] = generateMatrixInclude(descriptors)
+            ["build"] = generateMatrixInclude(descriptors, folder)
         }
     }
     needs = new Listing {
         "version"
+        ...(
+            if (hasInstant)
+                new Listing {
+                    "version-instant"
+                }
+            else new Listing {}
+        )
     }
     steps = new Listing {
         common.checkout
         common.setupJdk
         ...common.gradle(
-            "Build", 
-            "${{ matrix.module }}:\(command)${{ matrix.build-command }}",
+            "Build",
+            "${{ matrix.build.module }}:\(command)${{ matrix.build.command }}",
             new Mapping {
-                ["ORG_GRADLE_PROJECT_\(gradleVersionNameName)"] = "${{ needs.version.outputs.version }}"
-                ["ORG_GRADLE_PROJECT_\(gradleVersionCodeName)"] = "${{ needs.version.outputs.versionCode }}"
+                ["ORG_GRADLE_PROJECT_appVersionName"] = "${{ needs.version.outputs.version }}"
+                ["ORG_GRADLE_PROJECT_appVersionCode"] = "${{ matrix.build.instant && needs.version-instant.outputs.versionCode || needs.version.outputs.versionCode }}"
             }
         )
-        (common.signApp("./${{ matrix.module }}/build/outputs/\(folder)/${{ matrix.path }}/")) {
-            `if` = "${{ matrix.release }}"
+        (common.signApp("${{ matrix.build.path }}")) {
+            `if` = "${{ matrix.build.release }}"
         }
         new CommandStep {
             name = "Rename \(extension)"
-            run = "mv ${{steps.sign.outputs.signedFile}} ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
-            `if` = "${{ matrix.release }}"
+            run = "mv ${{ steps.sign.outputs.signedFile }} ./${{ matrix.build.name }}.\(extension)"
+            `if` = "${{ matrix.build.release }}"
         }
         new CommandStep {
             name = "Rename \(extension)"
-            run = "mv ./${{ matrix.module }}/build/outputs/\(folder)/${{ matrix.path }}/${{ matrix.module }}-${{ matrix.name }}.\(extension) ./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
-            `if` = "${{ !matrix.release }}"
+            run = "mv ${{ matrix.build.path }}/${{ matrix.build.fileName }}.\(extension) ./${{ matrix.build.name }}.\(extension)"
+            `if` = "${{ !matrix.build.release }}"
         }
         new ActionStep {
             uses = "actions/upload-artifact@v4"
             with = new Mapping {
-                ["name"] = "${{ matrix.module }}-${{ matrix.name }}-\(extension)"
-                ["path"] = "./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
+                ["name"] = "${{ matrix.build.name }}-\(extension)"
+                ["path"] = "./${{ matrix.build.name }}.\(extension)"
+            }
+        }
+        new ActionStep {
+            uses = "actions/upload-artifact@v4"
+            `if` = "matrix.build.hasMappingFile"
+            with = new Mapping {
+                ["name"] = "${{ matrix.build.name }}-\(extension)-mapping"
+                ["path"] = "${{ matrix.build.mappingFile }}"
             }
         }
     }
 }
 
-local function releaseJob(
-    descriptors: List<BuildDescriptor>, 
+function releaseJob(
+    descriptors: List<BuildDescriptor>,
     extension: String
 ) = new Job {
     strategy = new JobStrategy {
         matrix = new Mapping {
-            ["module"] = modules
-            ["build-command"] = descriptors.map((e) -> e.full())
-            ["include"] = generateMatrixInclude(descriptors)
+            ["build"] = generateMatrixInclude(descriptors, "")
         }
     }
     needs = new Listing {
@@ -106,7 +99,15 @@ local function releaseJob(
         new ActionStep {
             uses = "actions/download-artifact@v4"
             with = new Mapping {
-                ["name"] = "${{ matrix.module }}-${{ matrix.name }}-\(extension)"
+                ["name"] = "${{ matrix.build.name }}-\(extension)"
+                ["path"] = "./"
+            }
+        }
+        new ActionStep {
+            uses = "actions/download-artifact@v4"
+            `if` = "matrix.build.hasMappingFile"
+            with = new Mapping {
+                ["name"] = "${{ matrix.build.name }}-\(extension)-mapping"
                 ["path"] = "./"
             }
         }
@@ -118,12 +119,86 @@ local function releaseJob(
             }
             with = new Mapping {
                 ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
-                ["asset_path"] = "./${{ matrix.module }}-${{ matrix.name }}.\(extension)"
-                ["asset_name"] = "${{ matrix.module }}-${{ matrix.name }}-v${{ needs.version.outputs.version }}.\(extension)"
+                ["asset_path"] = "./${{ matrix.build.name }}.\(extension)"
+                ["asset_name"] = "${{ matrix.build.name }}-v${{ needs.version.outputs.version }}.\(extension)"
                 ["asset_content_type"] = "application/zip"
             }
         }
-    }  
+        new ActionStep {
+            name = "Upload Artifact to Release"
+            uses = "shogo82148/actions-upload-release-asset@v1"
+            `if` = "matrix.build.hasMappingFile"
+            env = new Mapping {
+                ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
+            }
+            with = new Mapping {
+                ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
+                ["asset_path"] = "./mapping.txt"
+                ["asset_name"] = "mapping-${{ matrix.build.name }}-v${{ needs.version.outputs.version }}.txt"
+                ["asset_content_type"] = "text/plain"
+            }
+        }
+    }
+}
+
+function generateMatrixInclude(
+    descriptors: List<BuildDescriptor>,
+    folder: String
+): Listing<Mapping<String, Any>> = new Listing {
+    for (descriptor in descriptors) {
+        new Mapping {
+            ["module"] = descriptor.appModule
+            ["command"] = descriptor.full
+            ["variant"] = descriptor.variant
+            ["flavor"] = descriptor.flavor
+            ["release"] = descriptor.release
+            ["path"] = descriptor.path(folder)
+            ["fileName"] = descriptor.fileName
+            ["name"] = descriptor.artifactName
+            ["instant"] = descriptor.instant
+            ["hasMappingFile"] = descriptor.hasMappingFile
+            ["mappingFile"] = descriptor.mappingFile
+        }
+    }
+}
+
+function extractApksFromAAB(extraArgs: Listing<String>) =
+    let (args =
+        (new Listing<String> {
+            "java -jar bundletool.jar build-apks"
+            "--ks=temp.keystore"
+            "--ks-key-alias=${{ secrets.ALIAS }}"
+            "--ks-pass=pass:${{ secrets.KEY_STORE_PASSWORD }}"
+            "--key-pass=pass:${{ secrets.KEY_PASSWORD }}"
+            "--bundle=\"./${{ matrix.build.name }}.aab\""
+            "--output=\"${{ matrix.build.name }}.apks\""
+        }.toList() + extraArgs.toList()).join(" \\\n")
+    )
+    new Listing {
+        downloadBundletool
+        new CommandStep {
+            name = "Setup keystore"
+            run = """
+                echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > temp.keystore
+                """
+        }
+        new CommandStep {
+            name = "Extract apks from aab"
+            run = args
+        }
+        new CommandStep {
+            name = "Cleanup keystore"
+            run = """
+                rm temp.keystore
+                """
+        }
+    }
+
+hidden downloadBundletool = new CommandStep {
+    name = "Download bundletool"
+    run = """
+        wget -q https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar -O bundletool.jar
+        """
 }
 
 name = "Build App"
@@ -150,6 +225,13 @@ permissions = new Mapping {
 
 jobs = new Mapping {
     ["version"] = common.version(versionNumberOffset)
+    ...(
+        if (hasInstant)
+            new Mapping {
+                ["version-instant"] = common.version(instantVersionNumberOffset)
+            }
+        else new Mapping {}
+    )
     ["build-apk"] = buildJob(
         apkBuildDescriptors,
         "apk",
@@ -186,54 +268,168 @@ jobs = new Mapping {
         aabBuildDescriptors,
         "aab"
     )
-    ["publish-aab-to-play-release-track"] = 
-        let(configurations = releaseTrackPublishingConfiguration.filter((c) -> modules.contains(c.appModule)))
-        if(
-            configurations.length > 0
-        ) new Job {
-            strategy = new JobStrategy {
-                matrix = new Mapping {
-                    ["module"] = configurations.map((c) -> c.appModule).distinct
-                    ["include"] = new Listing {
-                        for (c in configurations) {
+    ...(
+        if (hasInstant && iaToolPath != null)
+            new Mapping {
+                ["check-instant-app"] = new Job {
+                    needs = new Listing {
+                        "version"
+                        "build-aab"
+                    }
+                    strategy = new JobStrategy {
+                        matrix =
+                            let(descriptors = aabBuildDescriptors.filter((e) -> e.instant))
                             new Mapping {
-                                ["module"] = c.appModule
-                                ["package"] = c.packageName
-                                ["track"] = c.track
-                                ["name"] = aabBuildDescriptors.find(
-                                    (d) -> d.release && d.flavor == c.flavor
-                                ).name()
+                                ["build"] = generateMatrixInclude(descriptors, "")
+                            }
+                    }
+                    steps = new Listing {
+                        common.checkout
+                        common.setupJdk
+                        new ActionStep {
+                            uses = "actions/download-artifact@v4"
+                            with = new Mapping {
+                                ["name"] = "${{ matrix.build.name }}-aab"
+                                ["path"] = "./"
+                            }
+                        }
+                        ...extractApksFromAAB(new Listing {
+                            "--mode=instant"
+                        })
+                        let (toolCommand = if(iaToolPath.endsWith(".jar")) "java -jar \(iaToolPath)" else iaToolPath)
+                        new CommandStep {
+                            name = "Check bundle with ia tool"
+                            run = """
+                            \(toolCommand) telemetry --disable
+                            \(toolCommand) check ${{ matrix.build.name }}.apks 2>&1 | sed "s,\\x1B\\[[0-9;]*[a-zA-Z],,g" >> $GITHUB_STEP_SUMMARY
+                            """
+                        }
+                    }
+                }
+            }
+        else new Mapping {}
+    )
+    ...(
+        if (aabBuildDescriptors.length > 0)
+            new Mapping {
+                ["generate-apks"] = new Job {
+                    needs = new Listing {
+                        "version"
+                        "build-aab"
+                    }
+                    strategy = new JobStrategy {
+                        matrix = new Mapping {
+                            ["build"] = generateMatrixInclude(aabBuildDescriptors, "")
+                        }
+                    }
+                    steps = new Listing {
+                        common.checkout
+                        common.setupJdk
+                        new ActionStep {
+                            uses = "actions/download-artifact@v4"
+                            with = new Mapping {
+                                ["name"] = "${{ matrix.build.name }}-aab"
+                                ["path"] = "./"
+                            }
+                        }
+                        ...extractApksFromAAB(new Listing {
+                            "--mode=${{ matrix.build.instant && 'instant' || 'persistent' }}"
+                        })
+                        new ActionStep {
+                            uses = "actions/upload-artifact@v4"
+                            with = new Mapping {
+                                ["name"] = "${{ matrix.build.name }}-apks"
+                                ["path"] = "./${{ matrix.build.name }}.apks"
+                            }
+                        }
+                    }
+                }
+                ["publish-apks-to-release"] = new Job {
+                    strategy = new JobStrategy {
+                        matrix = new Mapping {
+                            ["build"] = generateMatrixInclude(aabBuildDescriptors, "")
+                        }
+                    }
+                    needs = new Listing {
+                        "version"
+                        "release"
+                        "generate-apks"
+                    }
+                    steps = new Listing {
+                        new ActionStep {
+                            uses = "actions/download-artifact@v4"
+                            with = new Mapping {
+                                ["name"] = "${{ matrix.build.name }}-apks"
+                                ["path"] = "./"
+                            }
+                        }
+                        new ActionStep {
+                            name = "Upload Artifact to Release"
+                            uses = "shogo82148/actions-upload-release-asset@v1"
+                            env = new Mapping {
+                                ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
+                            }
+                            with = new Mapping {
+                                ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
+                                ["asset_path"] = "./${{ matrix.build.name }}.apks"
+                                ["asset_name"] = "${{ matrix.build.name }}-v${{ needs.version.outputs.version }}.apks"
+                                ["asset_content_type"] = "application/zip"
                             }
                         }
                     }
                 }
             }
-            needs = new Listing {
-                "version"
-                "build-aab"
-            }
-            steps = new Listing {
-                new ActionStep {
-                    uses = "actions/download-artifact@v4"
-                    with = new Mapping {
-                        ["name"] = "${{ matrix.module }}-${{ matrix.name }}-aab"
-                        ["path"] = "./"
+        else new Mapping {}
+    )
+    ...(
+        let(configurations = releaseTrackPublishingConfiguration.filter((c) -> aabBuildDescriptors.any((d) -> d.appModule == c.appModule)))
+        if(configurations.length > 0)
+            new Mapping {
+                ["publish-aab-to-play-release-track"] = new Job {
+                    strategy = new JobStrategy {
+                        matrix = new Mapping {
+                            ["build"] = new Listing {
+                                for (c in configurations) {
+                                    new Mapping {
+                                        ["package"] = c.packageName
+                                        ["track"] = c.track
+                                        ["name"] = aabBuildDescriptors.find(
+                                            (d) -> d.release && d.flavor == c.flavor
+                                        ).fileName
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    needs = new Listing {
+                        "version"
+                        "build-aab"
+                    }
+                    steps = new Listing {
+                        new ActionStep {
+                            uses = "actions/download-artifact@v4"
+                            with = new Mapping {
+                                ["name"] = "${{ matrix.build.name }}-aab"
+                                ["path"] = "./"
+                            }
+                        }
+                        new ActionStep {
+                            id = "google-play"
+                            uses = "r0adkll/upload-google-play@v1.1.3"
+                            with = new Mapping {
+                                ["serviceAccountJsonPlainText"] = "${{ secrets.SERVICE_ACCOUNT_JSON }}"
+                                ["packageName"] = "${{ matrix.build.package }}"
+                                ["releaseFiles"] = "./${{ matrix.build.name }}.aab"
+                                ["track"] = "${{ matrix.build.track }}"
+                                ["changesNotSentForReview"] = true
+                            }
+                        }
+                        new CommandStep {
+                            run = "echo \"Internal release url: ${{ steps.google-play.outputs.internalSharingDownloadUrl }}\" >> $GITHUB_STEP_SUMMARY"
+                        }
                     }
                 }
-                new ActionStep {
-                    id = "google-play"
-                    uses = "r0adkll/upload-google-play@v1.1.3"
-                    with = new Mapping {
-                        ["serviceAccountJsonPlainText"] = "${{ secrets.SERVICE_ACCOUNT_JSON }}"
-                        ["packageName"] = "${{ matrix.package }}"
-                        ["releaseFiles"] = "./${{ matrix.module }}-${{ matrix.name }}.aab"
-                        ["track"] = "${{ matrix.track }}"
-                        ["changesNotSentForReview"] = true
-                    }
-                }
-                new CommandStep {
-                    run = "echo \"Internal release url: ${{ steps.google-play.outputs.internalSharingDownloadUrl }}\" >> $GITHUB_STEP_SUMMARY"
-                }
             }
-        } else null
-}.toMap().filter((k,v) -> v != null).toMapping()
+        else new Mapping {}
+    )
+}
