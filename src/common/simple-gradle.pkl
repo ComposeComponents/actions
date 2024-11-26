@@ -2,6 +2,7 @@ open module simple
 extends "base.pkl"
 import "common.pkl"
 
+hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden jobName: String
 hidden gradleTask: String
@@ -32,6 +33,7 @@ jobs = new Mapping {
         steps = new Listing {
             common.checkout
             common.setupJdk
+            ...extraBuildSteps
             ...common.gradle("\(jobName.capitalize())", "${{ matrix.module }}:\(gradleTask)", new Mapping {})
         }
     }

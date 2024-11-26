@@ -3,6 +3,7 @@ extends "common/base.pkl"
 import "common/common.pkl"
 import "common/target.pkl" as targets
 
+hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden sonatypeEnabled = true
 
@@ -52,11 +53,13 @@ jobs = new Mapping {
     ["version"] = common.version(0)
     ["build-android"] = targets.buildTargetJob(
         androidBuildTargets,
-        "ubuntu-latest"
+        "ubuntu-latest",
+        extraBuildSteps
     )
     ["build-ios"] = targets.buildTargetJob(
         iosBuildTargets,
-        "macos-latest"
+        "macos-latest",
+        extraBuildSteps
     )
     ["release"] = new Job {
         needs = new Listing {

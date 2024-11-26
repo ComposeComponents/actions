@@ -2,3 +2,4 @@ open module base
 extends "base-import.pkl"
 
 hidden modules: List<String>
+hidden extraBuildSteps: Listing<Step> = new Listing {}

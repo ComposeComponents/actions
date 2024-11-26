@@ -1,6 +1,8 @@
 extends "common/base.pkl"
 import "common/common.pkl"
 
+
+hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden sonatypeEnabled = true
 
@@ -40,6 +42,7 @@ jobs = new Mapping {
         steps = new Listing {
             common.checkout
             common.setupJdk
+            ...extraBuildSteps
             ...common.gradle(
                 "Build", 
                 "${{ matrix.module }}:build",
