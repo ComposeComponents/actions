@@ -1,4 +1,5 @@
 amends "../src/render.pkl"
+import "../src/common/base.pkl" as base
 import "../src/common/build-app-support.pkl" as support
 
 workflows = new Listing {
@@ -36,6 +37,12 @@ workflows = new Listing {
                 packageName = "com.example"
             }
         )
+
+        extraBuildSteps = new Listing {
+            new base.CommandStep {
+                run = "echo \"test\""
+            }
+        }
     }
     (import("../src/build-kmp-lib.pkl")) {
         name = "Build KMP Library"

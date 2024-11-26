@@ -11,6 +11,8 @@ hidden instantVersionNumberOffset = 0
 hidden gradleVersionNameName = "version"
 hidden gradleVersionCodeName = "versionCode"
 
+hidden extraBuildSteps: Listing<Step> = new Listing {}
+
 hidden releaseTrackPublishingConfiguration: List<AppReleaseDescriptor>(isDistinctBy((e) -> List(e.appModule, e.flavor))) = List()
 
 hidden apkBuildDescriptors: List<BuildDescriptor>
@@ -44,6 +46,7 @@ function buildJob(
     steps = new Listing {
         common.checkout
         common.setupJdk
+        ...extraBuildSteps
         ...common.gradle(
             "Build",
             "${{ matrix.build.module }}:\(command)${{ matrix.build.command }}",
