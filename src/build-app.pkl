@@ -17,6 +17,8 @@ hidden apkBuildDescriptors: List<BuildDescriptor>
 hidden aabBuildDescriptors: List<BuildDescriptor>
 
 local hasInstant = aabBuildDescriptors.filter((e) -> e.instant).length > 0
+local hasAab = aabBuildDescriptors.length > 0
+local hasApk = apkBuildDescriptors.length > 0
 
 function buildJob(
     descriptors: List<BuildDescriptor>,
@@ -47,7 +49,10 @@ function buildJob(
             "${{ matrix.build.module }}:\(command)${{ matrix.build.command }}",
             new Mapping {
                 ["ORG_GRADLE_PROJECT_appVersionName"] = "${{ needs.version.outputs.version }}"
-                ["ORG_GRADLE_PROJECT_appVersionCode"] = "${{ matrix.build.instant && needs.version-instant.outputs.versionCode || needs.version.outputs.versionCode }}"
+                ["ORG_GRADLE_PROJECT_appVersionCode"] = if (hasInstant)
+                    "${{ matrix.build.instant && needs.version-instant.outputs.versionCode || needs.version.outputs.versionCode }}"
+                else
+                    "${{ needs.version.outputs.versionCode }}"
             }
         )
         (common.signApp("${{ matrix.build.path }}")) {
@@ -232,86 +237,35 @@ jobs = new Mapping {
             }
         else new Mapping {}
     )
-    ["build-apk"] = buildJob(
-        apkBuildDescriptors,
-        "apk",
-        "build",
-        "apk"
-    )
-    ["build-aab"] = buildJob(
-        aabBuildDescriptors,
-        "aab",
-        "bundle",
-        "bundle"
-    )
-    ["release"] = new Job {
-        needs = new Listing {
-            "version"
-        }
-        `if` = "github.event_name != 'pull_request'"
-        permissions = new Mapping {
-            ["contents"] = "write"
-        }
-        outputs = new Mapping {
-            ["upload_url"] = "${{ steps.create_release.outputs.upload_url }}"
-        }
-        steps = new Listing {
-            common.checkout
-            ...common.create_release
-        }
-    }
-    ["publish-apk-to-release"] = releaseJob(
-        apkBuildDescriptors,
-        "apk"
-    )
-    ["publish-aab-to-release"] = releaseJob(
-        aabBuildDescriptors,
-        "aab"
-    )
     ...(
-        if (hasInstant && iaToolPath != null)
+        if (hasApk)
             new Mapping {
-                ["check-instant-app"] = new Job {
-                    needs = new Listing {
-                        "version"
-                        "build-aab"
-                    }
-                    strategy = new JobStrategy {
-                        matrix =
-                            let(descriptors = aabBuildDescriptors.filter((e) -> e.instant))
-                            new Mapping {
-                                ["build"] = generateMatrixInclude(descriptors, "")
-                            }
-                    }
-                    steps = new Listing {
-                        common.checkout
-                        common.setupJdk
-                        new ActionStep {
-                            uses = "actions/download-artifact@v4"
-                            with = new Mapping {
-                                ["name"] = "${{ matrix.build.name }}-aab"
-                                ["path"] = "./"
-                            }
-                        }
-                        ...extractApksFromAAB(new Listing {
-                            "--mode=instant"
-                        })
-                        let (toolCommand = if(iaToolPath.endsWith(".jar")) "java -jar \(iaToolPath)" else iaToolPath)
-                        new CommandStep {
-                            name = "Check bundle with ia tool"
-                            run = """
-                            \(toolCommand) telemetry --disable
-                            \(toolCommand) check ${{ matrix.build.name }}.apks 2>&1 | sed "s,\\x1B\\[[0-9;]*[a-zA-Z],,g" >> $GITHUB_STEP_SUMMARY
-                            """
-                        }
-                    }
-                }
+                ["build-apk"] = buildJob(
+                    apkBuildDescriptors,
+                    "apk",
+                    "build",
+                    "apk"
+                )
+                ["publish-apk-to-release"] = releaseJob(
+                    apkBuildDescriptors,
+                    "apk"
+                )
             }
         else new Mapping {}
     )
     ...(
-        if (aabBuildDescriptors.length > 0)
+        if (hasAab)
             new Mapping {
+                ["build-aab"] = buildJob(
+                    apkBuildDescriptors,
+                    "aab",
+                    "bundle",
+                    "bundle"
+                )
+                ["publish-aab-to-release"] = releaseJob(
+                    aabBuildDescriptors,
+                    "aab"
+                )
                 ["generate-apks"] = new Job {
                     needs = new Listing {
                         "version"
@@ -375,6 +329,63 @@ jobs = new Mapping {
                                 ["asset_name"] = "${{ matrix.build.name }}-v${{ needs.version.outputs.version }}.apks"
                                 ["asset_content_type"] = "application/zip"
                             }
+                        }
+                    }
+                }
+            }
+        else new Mapping {}
+    )
+    ["release"] = new Job {
+        needs = new Listing {
+            "version"
+        }
+        `if` = "github.event_name != 'pull_request'"
+        permissions = new Mapping {
+            ["contents"] = "write"
+        }
+        outputs = new Mapping {
+            ["upload_url"] = "${{ steps.create_release.outputs.upload_url }}"
+        }
+        steps = new Listing {
+            common.checkout
+            ...common.create_release
+        }
+    }
+    ...(
+        if (hasInstant && iaToolPath != null)
+            new Mapping {
+                ["check-instant-app"] = new Job {
+                    needs = new Listing {
+                        "version"
+                        "build-aab"
+                    }
+                    strategy = new JobStrategy {
+                        matrix =
+                            let(descriptors = aabBuildDescriptors.filter((e) -> e.instant))
+                            new Mapping {
+                                ["build"] = generateMatrixInclude(descriptors, "")
+                            }
+                    }
+                    steps = new Listing {
+                        common.checkout
+                        common.setupJdk
+                        new ActionStep {
+                            uses = "actions/download-artifact@v4"
+                            with = new Mapping {
+                                ["name"] = "${{ matrix.build.name }}-aab"
+                                ["path"] = "./"
+                            }
+                        }
+                        ...extractApksFromAAB(new Listing {
+                            "--mode=instant"
+                        })
+                        let (toolCommand = if(iaToolPath.endsWith(".jar")) "java -jar \(iaToolPath)" else iaToolPath)
+                        new CommandStep {
+                            name = "Check bundle with ia tool"
+                            run = """
+                            \(toolCommand) telemetry --disable
+                            \(toolCommand) check ${{ matrix.build.name }}.apks 2>&1 | sed "s,\\x1B\\[[0-9;]*[a-zA-Z],,g" >> $GITHUB_STEP_SUMMARY
+                            """
                         }
                     }
                 }
