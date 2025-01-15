@@ -1,76 +1,216 @@
 import "base-import.pkl" as base
 import "common.pkl"
 
+typealias MimeType = String(contains("/"))
+typealias FolderMimeType = MimeType | "folder"
+
 class Artifact {
   key: String
   name: String
-  mimeType: String
+  mimeType: MimeType
 }
 
-class KMPTarget {
-  buildCommand: String
-  filesystemLocation: String
-  artifactName: String
-  artifactKey: String
-  needsZip: Boolean = false
-  artifactMimeType: String = "application/zip"
+function Artifact(_m: MultiplatformOutput, p: SpecializationParameters) = new Artifact {
+  key = _m.key
+  name = if (_m.mimeType == "folder") "\(_m.name).zip" else _m.name
+  mimeType = if (_m.mimeType == "folder") "application/zip" else _m.mimeType
+}
 
-  function toArtifact(): Artifact = new Artifact {
-    key = artifactKey
-    name = "\(artifactName)\(if(needsZip) ".zip" else "")"
-    mimeType = artifactMimeType
+class SpecializationParameters {
+  version: String
+}
+
+class MultiplatformTarget {
+  command: String
+  outputs: Listing<MultiplatformOutput>
+  os: String = "ubuntu-latest"
+}
+
+abstract class MultiplatformOutput {
+  key: String
+  name: String
+  abstract function location(parameters: SpecializationParameters): String
+  mimeType: FolderMimeType = "application/zip"
+}
+
+class UnversionedMultiplatformOutput extends MultiplatformOutput {
+  location: String
+
+  function location(parameters: SpecializationParameters): String = location
+}
+
+class LibMultiplatformOutput extends MultiplatformOutput {
+  _module: String
+
+  targetName: String
+  
+  extension: String = "jar"
+  metadata: Boolean = false
+
+  mimeType: FolderMimeType = "application/zip"
+  name: String = "\(_module)-\(targetName).\(extension)"
+  key: String = List(
+    _module, 
+    targetName,
+    extension,
+    if (metadata) "metadata" else null
+  ).filterNonNull().join("-")
+
+  function location(parameters: SpecializationParameters): String = 
+    let(fileName = List(
+        _module, 
+        targetName, 
+        parameters.version, 
+        if (metadata) "metadata" else null
+      ).filterNonNull().join("-")
+    )
+    "./\(_module)/build//libs/\(fileName).\(extension)"
+}
+
+class ClassesMultiplatformOutput extends MultiplatformOutput {
+  path: String
+  _module: String
+
+  targetName: String
+  
+  mimeType: FolderMimeType = "application/zip"
+  name: String = "\(_module)-\(targetName).klib"
+  key: String = List(
+    _module, 
+    targetName,
+    "klib"
+  ).filterNonNull().join("-")
+
+  function location(parameters: SpecializationParameters): String = 
+    "./\(_module)/build/classes/kotlin/linuxArm64/main/klib/\(_module).klib"
+}
+
+typealias Architecture = "arm64" | "x64"
+typealias IosArchitecture = Architecture | "simulatorArm64" | "arm32"
+typealias DarwinTarget = "ios" | "macos" | "watchos" | "tvos"
+
+function buildDarwinMultiplatformTarget(moduleName: String, darwin: DarwinTarget, architecture: IosArchitecture) = new MultiplatformTarget {
+  command = ":\(moduleName):linkPodReleaseFramework\(darwin.capitalize())\(architecture.capitalize())"
+  os = "macos-latest"
+  outputs = new Listing {
+    new UnversionedMultiplatformOutput {
+      key = "\(moduleName)-\(darwin)\(architecture.capitalize())-framework"
+      name = "\(moduleName)-\(darwin)\(architecture.capitalize()).framework"
+      location = "./\(moduleName)/build/bin/\(darwin)\(architecture.capitalize())/podReleaseFramework/\(moduleName).framework"
+      mimeType = "folder"
+    }
+    new ClassesMultiplatformOutput {
+      _module = moduleName
+      targetName = "\(darwin)\(architecture.capitalize())"
+    }
   }
 }
 
-iosTargets = new Listing {
-  "Arm64"
-  "SimulatorArm64"
-  "X64"
+function buildIosMultiplatformTarget(moduleName: String, architecture: IosArchitecture) 
+  = buildDarwinMultiplatformTarget(moduleName, "ios", architecture) 
+
+function buildAndroidMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
+  command = ":\(moduleName):assembleRelease"
+  outputs = new Listing {
+    new UnversionedMultiplatformOutput {
+      key = "\(moduleName)-android-aar"
+      name = "\(moduleName)-android.aar"
+      location = "./\(moduleName)/build/outputs/aar/\(moduleName)-release.aar"
+    }
+  }
 }
 
-function buildIosKmpTarget(moduleName: String, moduleBuildPath: String, target: String) = new KMPTarget {
-  buildCommand = ":\(moduleName):linkPodReleaseFrameworkIos\(target.capitalize())"
-  filesystemLocation = "\(moduleBuildPath)/bin/ios\(target.capitalize())/podReleaseFramework/\(moduleName).framework"
-  artifactName = "\(moduleName)-ios\(target.capitalize()).framework"
-  artifactKey = "\(moduleName)-ios\(target.capitalize())"
-  needsZip = true
+function buildJvmMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
+  command = ":\(moduleName):jvmJar"
+  outputs = new Listing {
+    new LibMultiplatformOutput {
+      _module = moduleName
+      targetName = "jvm"
+    }
+  }
 }
 
-function buildAndroidKmpTarget(moduleName: String, moduleBuildPath: String) = new KMPTarget {
-  buildCommand = ":\(moduleName):assembleRelease"
-  filesystemLocation = "\(moduleBuildPath)/outputs/aar/\(moduleName)-release.aar"
-  artifactName = "\(moduleName)-android.aar"
-  artifactKey = "\(moduleName)-aar"
+function buildJsMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
+  command = ":\(moduleName):jsJar"
+  outputs = new Listing {
+    new LibMultiplatformOutput {
+      _module = moduleName
+      targetName = "js"
+      extension = "klib"
+    }
+  }
 }
 
-function buildJvmKmpTarget(moduleName: String, moduleBuildPath: String) = new KMPTarget {
-  buildCommand = ":\(moduleName):assembleJvm"
-  filesystemLocation = "./(\(moduleBuildPath)/libs/\(moduleName)-jvm.jar"
-  artifactName = "\(moduleName)-java.jvm"
-  artifactKey = "\(moduleName)-jvm"
+function buildWasmJsMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
+  command = ":\(moduleName):wasmJsJar"
+  outputs = new Listing {
+    new LibMultiplatformOutput {
+      _module = moduleName
+      targetName = "wasm-js"
+      extension = "klib"
+    }
+  }
 }
 
-function buildJsKmpTarget(moduleName: String, moduleBuildPath: String) = new KMPTarget {
-  buildCommand = ":\(moduleName):assembleJs"
-  filesystemLocation = "./(\(moduleBuildPath)/distributions/\(moduleName).js"
-  artifactName = "\(moduleName)-javascript.js"
-  artifactKey = "\(moduleName)-js"
-  artifactMimeType = "text/javascript"
+function buildWasmWasiMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
+  command = ":\(moduleName):wasmWasiJar"
+  outputs = new Listing {
+    new LibMultiplatformOutput {
+      _module = moduleName
+      targetName = "wasm-wasi"
+      extension = "klib"
+    }
+  }
 }
 
-function toJobStrategy(targets: Listing<KMPTarget>): base.JobStrategy = new base.JobStrategy {
+function buildLinuxMultiplatformTarget(moduleName: String, architecture: Architecture) = new MultiplatformTarget {
+  command = ":\(moduleName):compileKotlinLinux\(architecture.capitalize())"
+  outputs = new Listing {
+    new ClassesMultiplatformOutput {
+      _module = moduleName
+      targetName = "linux\(architecture.capitalize())"
+    }
+  }
+}
+
+function buildMing64WMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
+  command = ":\(moduleName):compileKotlinMing64WX64"
+  outputs = new Listing {
+    new ClassesMultiplatformOutput {
+      _module = moduleName
+      targetName = "mingwX64"
+    }
+  }
+}
+
+function toJobStrategy(targets: Listing<MultiplatformTarget>, p: SpecializationParameters): base.JobStrategy = new base.JobStrategy {
   matrix = new Mapping {
     ["configuration"] = new Listing {
       for (target in targets) {
-        target.toMap()
+        new Mapping {
+          ["command"] = target.command
+          ["os"] = target.os
+          for (i,o in target.outputs) {
+            ["output\(i)"] = new Mapping {
+              ["key"] = o.key
+              ["name"] = o.name
+              ["location"] = o.location(p)
+              ["needsZip"] = o.mimeType == "folder"
+            }
+          }
+        }
       }
     }
   }
 }
 
-function buildTargetJob(targets: Listing<KMPTarget>, runPlatform: String, extraBuildSteps: Listing<base.Step>) = new base.Job {
-  `runs-on` = runPlatform
-  strategy = toJobStrategy(targets)
+function buildTargetJob(
+  targets: Listing<MultiplatformTarget>, 
+  p: SpecializationParameters,
+  extraBuildSteps: Listing<base.Step>
+) = new base.Job {
+  `runs-on` = "${{ matrix.configuration.os }}"
+  strategy = toJobStrategy(targets, p)
   needs = new Listing {
     "version"
   }
@@ -80,26 +220,35 @@ function buildTargetJob(targets: Listing<KMPTarget>, runPlatform: String, extraB
     ...extraBuildSteps
     ...common.gradle(
       "Build",
-      "${{ matrix.configuration.buildCommand }}",
+      "${{ matrix.configuration.buildCommand}}",
       new Mapping {
-        ["ORG_GRADLE_PROJECT_version"] = "${{ needs.version.outputs.version }}"
+        ["ORG_GRADLE_PROJECT_version"] = p.version
       }
     )
+    ...uploadArtifact(0)
+    ...uploadArtifact(1)
+  }
+}
+
+function uploadArtifact(index: Int): Listing<base.Step> = 
+  let(key = "output\(index)")
+  let(check = "contains(toJSON(matrix.configuration), '\(key)')")
+  new Listing {
     new base.CommandStep {
+      `if` = check
       name = "Rename Artifact"
-      run = "mv ${{ matrix.configuration.filesystemLocation }} ./${{ matrix.configuration.artifactName }}"
+      run = "mv ${{ matrix.configuration.\(key).location }} ./${{ matrix.configuration.\(key).name }}"
     }
     new base.CommandStep {
+      `if` = "\(check) && matrix.configuration.needsZip"
       name = "Zip if needed"
-      `if` = "${{ matrix.configuration.needsZip }}"
-      run = "zip -r ${{ matrix.configuration.artifactName }}.zip ./${{ matrix.configuration.artifactName }}"
+      run = "zip -r ${{ matrix.configuration.\(key).name }}.zip ./${{ matrix.configuration.\(key).name }}"
     }
     new base.ActionStep {
       uses = "actions/upload-artifact@v4"
       with = new Mapping {
-        ["name"] = "${{ matrix.configuration.artifactKey }}"
-        ["path"] = "./${{ matrix.configuration.artifactName }}${{ matrix.configuration.needsZip && '.zip' || '' }}"
+        ["name"] = "${{ matrix.configuration.\(key).key }}"
+        ["path"] = "./${{ matrix.configuration.\(key).name }}${{ matrix.configuration.\(key).needsZip && '.zip' || '' }}"
       }
     }
   }
-}

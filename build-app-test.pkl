@@ -1,0 +1,13 @@
+amends "src/build-app.pkl"
+
+apkBuildDescriptors = List(
+    debugBuildDescriptor("app"),
+    debugBuildDescriptor("feature:ar"),
+    debugBuildDescriptor("feature:viewer"),
+    debugBuildDescriptor("feature:audio")
+)
+
+aabBuildDescriptors = List(
+    releaseBuildDescriptor("app"),
+    releaseInstantBuildDescriptor("app")
+)
