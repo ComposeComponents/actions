@@ -58,7 +58,6 @@ workflows = new Listing {
             target.buildIosMultiplatformTarget("serializable", "simulatorArm64")
             target.buildDarwinMultiplatformTarget("serializable", "macos", "x64")
             target.buildDarwinMultiplatformTarget("serializable", "macos", "arm64")
-            target.buildDarwinMultiplatformTarget("serializable", "macos", "simulatorArm64")
             target.buildDarwinMultiplatformTarget("serializable", "watchos", "x64")
             target.buildDarwinMultiplatformTarget("serializable", "watchos", "arm32")
             target.buildDarwinMultiplatformTarget("serializable", "watchos", "arm64")

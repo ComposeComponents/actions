@@ -240,7 +240,7 @@ function uploadArtifact(index: Int): Listing<base.Step> =
       run = "mv ${{ matrix.configuration.\(key).location }} ./${{ matrix.configuration.\(key).name }}"
     }
     new base.CommandStep {
-      `if` = "\(check) && matrix.configuration.needsZip"
+      `if` = "\(check) && matrix.configuration.\(key).needsZip"
       name = "Zip if Needed (Output \(index))"
       run = "zip -r ${{ matrix.configuration.\(key).name }}.zip ./${{ matrix.configuration.\(key).name }}"
     }
