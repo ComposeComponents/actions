@@ -6,6 +6,7 @@ import "common/target.pkl" as target
 hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden sonatypeEnabled = true
+hidden sonatypeAutomaticRelease = false
 
 local specializationParameters = new target.SpecializationParameters {
     version = "${{ needs.version.outputs.version }}"
@@ -89,8 +90,7 @@ jobs = new Mapping {
         needs = new Listing {
             "version"
             "release"
-            "build-android"
-            "build-ios"
+            "build"
         }
         steps = new Listing {
             new ActionStep {
@@ -123,6 +123,7 @@ jobs = new Mapping {
         }
     }
     ["publish-sonatype"] = if(sonatypeEnabled) new Job {
+        // Since everything builds on macOS, just use macOS
         `runs-on` = "macos-latest"
         strategy = new JobStrategy {
             matrix = new Mapping {
@@ -147,7 +148,7 @@ jobs = new Mapping {
                 -Ppom.scm.connection="scm:git:git://github.com/${{ github.repository }}"
                 -Ppom.scm.developerConnection="scm:git:ssh://github.com/${{ github.repository }}"
                 -Ppom.scm.url="https://github.com/${{ github.repository }}"
-                ${{ matrix.module }}:publishAndReleaseToMavenCentral --no-configuration-cache
+                ${{ matrix.module }}:publish\(if (sonatypeAutomaticRelease) "AndRelease" else "")ToMavenCentral --no-configuration-cache
                 """,
                 new Mapping {
                     ["ORG_GRADLE_PROJECT_mavenCentralPassword"] = "${{ secrets.SONATYPE_PASSWORD }}"

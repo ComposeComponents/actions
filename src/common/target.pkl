@@ -64,7 +64,7 @@ class LibMultiplatformOutput extends MultiplatformOutput {
         if (metadata) "metadata" else null
       ).filterNonNull().join("-")
     )
-    "./\(_module)/build//libs/\(fileName).\(extension)"
+    "./\(_module)/build/libs/\(fileName).\(extension)"
 }
 
 class ClassesMultiplatformOutput extends MultiplatformOutput {
@@ -82,7 +82,7 @@ class ClassesMultiplatformOutput extends MultiplatformOutput {
   ).filterNonNull().join("-")
 
   function location(parameters: SpecializationParameters): String = 
-    "./\(_module)/build/classes/kotlin/linuxArm64/main/klib/\(_module).klib"
+    "./\(_module)/build/classes/kotlin/\(targetName)/main/klib/\(_module).klib"
 }
 
 typealias Architecture = "arm64" | "x64"
@@ -174,7 +174,7 @@ function buildLinuxMultiplatformTarget(moduleName: String, architecture: Archite
 }
 
 function buildMing64WMultiplatformTarget(moduleName: String) = new MultiplatformTarget {
-  command = ":\(moduleName):compileKotlinMing64WX64"
+  command = ":\(moduleName):compileKotlinMingWX64"
   outputs = new Listing {
     new ClassesMultiplatformOutput {
       _module = moduleName
@@ -220,7 +220,7 @@ function buildTargetJob(
     ...extraBuildSteps
     ...common.gradle(
       "Build",
-      "${{ matrix.configuration.buildCommand}}",
+      "${{ matrix.configuration.command }}",
       new Mapping {
         ["ORG_GRADLE_PROJECT_version"] = p.version
       }
@@ -236,16 +236,18 @@ function uploadArtifact(index: Int): Listing<base.Step> =
   new Listing {
     new base.CommandStep {
       `if` = check
-      name = "Rename Artifact"
+      name = "Rename Artifact (Output \(index))"
       run = "mv ${{ matrix.configuration.\(key).location }} ./${{ matrix.configuration.\(key).name }}"
     }
     new base.CommandStep {
       `if` = "\(check) && matrix.configuration.needsZip"
-      name = "Zip if needed"
+      name = "Zip if Needed (Output \(index))"
       run = "zip -r ${{ matrix.configuration.\(key).name }}.zip ./${{ matrix.configuration.\(key).name }}"
     }
     new base.ActionStep {
       uses = "actions/upload-artifact@v4"
+      `if` = "\(check)"
+      name = "Upload Artifact (Output \(index))"
       with = new Mapping {
         ["name"] = "${{ matrix.configuration.\(key).key }}"
         ["path"] = "./${{ matrix.configuration.\(key).name }}${{ matrix.configuration.\(key).needsZip && '.zip' || '' }}"
