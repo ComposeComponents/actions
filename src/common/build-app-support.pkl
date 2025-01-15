@@ -59,3 +59,24 @@ class AppReleaseDescriptor {
     packageName: String
     track: ReleaseTrack = "internal"
 }
+
+function generateMatrixInclude(
+    descriptors: List<BuildDescriptor>,
+    folder: String
+): Listing<Mapping<String, Any>> = new Listing {
+    for (descriptor in descriptors) {
+        new Mapping {
+            ["module"] = descriptor.appModule
+            ["command"] = descriptor.full
+            ["variant"] = descriptor.variant
+            ["flavor"] = descriptor.flavor
+            ["release"] = descriptor.release
+            ["path"] = descriptor.path(folder)
+            ["fileName"] = descriptor.fileName
+            ["name"] = descriptor.artifactName
+            ["instant"] = descriptor.instant
+            ["hasMappingFile"] = descriptor.hasMappingFile
+            ["mappingFile"] = descriptor.mappingFile
+        }
+    }
+}

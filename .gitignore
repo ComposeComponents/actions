@@ -5,3 +5,4 @@ src/*.yml
 src/build-app-test.pkl
 
 test/out/
+test/output/

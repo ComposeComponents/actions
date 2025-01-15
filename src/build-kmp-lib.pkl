@@ -1,29 +1,29 @@
 open module buildKmpLib
 extends "common/base.pkl"
 import "common/common.pkl"
-import "common/target.pkl" as targets
+import "common/target.pkl" as target
 
 hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden sonatypeEnabled = true
+hidden sonatypeAutomaticRelease = false
 
-hidden iosBuildTargets = new Listing {
-    for (moduleName in modules) {
-        for (iosTarget in targets.iosTargets) {
-            targets.buildIosKmpTarget(
-                moduleName,
-                "./\(moduleName)/build",
-                iosTarget
-            )
-        }
-    }
+local specializationParameters = new target.SpecializationParameters {
+    version = "${{ needs.version.outputs.version }}"
 }
-hidden androidBuildTargets = new Listing {
-    for (moduleName in modules) {
-        targets.buildAndroidKmpTarget(
-            moduleName,
-            "./\(moduleName)/build"
-        )
+
+local iosTargets = new Listing {
+    "arm64"
+    "simulatorArm64"
+    "x64"
+}
+
+hidden targets = new Listing {
+    for (m in modules) {
+        for (i in iosTargets) {
+            target.buildIosMultiplatformTarget(m, i)
+        }
+        target.buildAndroidMultiplatformTarget(m)
     }
 }
 
@@ -51,14 +51,9 @@ permissions = new Mapping {
 
 jobs = new Mapping {
     ["version"] = common.version(0)
-    ["build-android"] = targets.buildTargetJob(
-        androidBuildTargets,
-        "ubuntu-latest",
-        extraBuildSteps
-    )
-    ["build-ios"] = targets.buildTargetJob(
-        iosBuildTargets,
-        "macos-latest",
+    ["build"] = target.buildTargetJob(
+        targets,
+        specializationParameters,
         extraBuildSteps
     )
     ["release"] = new Job {
@@ -81,11 +76,13 @@ jobs = new Mapping {
         strategy = new JobStrategy {
             matrix = new Mapping {
                 ["artifact"] = new Listing {
-                    for (target in iosBuildTargets) {
-                        target.toArtifact()
-                    }
-                    for (target in androidBuildTargets) {
-                        target.toArtifact()
+                    for (t in targets) {
+                        for (output in t.outputs) {
+                            target.Artifact(
+                                output,
+                                specializationParameters
+                            )
+                        }
                     }
                 }
             }
@@ -93,8 +90,7 @@ jobs = new Mapping {
         needs = new Listing {
             "version"
             "release"
-            "build-android"
-            "build-ios"
+            "build"
         }
         steps = new Listing {
             new ActionStep {
@@ -127,6 +123,7 @@ jobs = new Mapping {
         }
     }
     ["publish-sonatype"] = if(sonatypeEnabled) new Job {
+        // Since everything builds on macOS, just use macOS
         `runs-on` = "macos-latest"
         strategy = new JobStrategy {
             matrix = new Mapping {
@@ -151,7 +148,7 @@ jobs = new Mapping {
                 -Ppom.scm.connection="scm:git:git://github.com/${{ github.repository }}"
                 -Ppom.scm.developerConnection="scm:git:ssh://github.com/${{ github.repository }}"
                 -Ppom.scm.url="https://github.com/${{ github.repository }}"
-                ${{ matrix.module }}:publishAndReleaseToMavenCentral --no-configuration-cache
+                ${{ matrix.module }}:publish\(if (sonatypeAutomaticRelease) "AndRelease" else "")ToMavenCentral --no-configuration-cache
                 """,
                 new Mapping {
                     ["ORG_GRADLE_PROJECT_mavenCentralPassword"] = "${{ secrets.SONATYPE_PASSWORD }}"
