@@ -245,7 +245,7 @@ jobs = new Mapping {
                 ["build-apk"] = buildJob(
                     apkBuildDescriptors,
                     "apk",
-                    "build",
+                    "assemble",
                     "apk"
                 )
                 ["publish-apk-to-release"] = releaseJob(
