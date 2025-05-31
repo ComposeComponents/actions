@@ -45,7 +45,7 @@ function gradle(
 ): Listing<actions.Step> = new Listing {
     new actions.ActionStep {
         name = "Setup gradle"
-        uses = "gradle/actions/setup-gradle@v3"
+        uses = "gradle/actions/setup-gradle@v4"
     }
     let(alteredCommand = command.replaceAll("\n", " \\\n"))
         new actions.CommandStep {
