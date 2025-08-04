@@ -65,7 +65,7 @@ function signApp(path: String): actions.ActionStep = new actions.ActionStep {
         ["keyAlias"] = "${{ secrets.ALIAS }}"
         ["keyStorePassword"] = "${{ secrets.KEY_STORE_PASSWORD }}"
         ["keyPassword"] = "${{ secrets.KEY_PASSWORD }}"
-        ["buildToolsVersion"] = "33.0.0"
+        ["buildToolsVersion"] = "35.0.0"
     }
 }
 
