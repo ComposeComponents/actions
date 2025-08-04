@@ -1,0 +1,11 @@
+{
+  "name": "actions",
+  "packageUri": "package://components.emilym.cl/actions@0.1.20",
+  "version": "0.1.20",
+  "packageZipUrl": "https://components.emilym.cl/actions/actions@0.1.20.zip",
+  "packageZipChecksums": {
+    "sha256": "1924d7fadbac03fdec7262b668dcf4b00a889e049d74b04efe9b694081e241c4"
+  },
+  "dependencies": {},
+  "authors": []
+}
