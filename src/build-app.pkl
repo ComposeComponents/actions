@@ -17,9 +17,12 @@ hidden releaseTrackPublishingConfiguration: List<AppReleaseDescriptor>(isDistinc
 hidden apkBuildDescriptors: List<BuildDescriptor>
 hidden aabBuildDescriptors: List<BuildDescriptor>
 
+hidden generateApks = false
+
 local hasInstant = aabBuildDescriptors.filter((e) -> e.instant).length > 0
 local hasAab = aabBuildDescriptors.length > 0
 local hasApk = apkBuildDescriptors.length > 0
+
 
 function buildJob(
     descriptors: List<BuildDescriptor>,
@@ -268,72 +271,76 @@ jobs = new Mapping {
                     aabBuildDescriptors,
                     "aab"
                 )
-                ["generate-apks"] = new Job {
-                    needs = new Listing {
-                        "version"
-                        "build-aab"
-                    }
-                    strategy = new JobStrategy {
-                        matrix = new Mapping {
-                            ["build"] = generateMatrixInclude(aabBuildDescriptors, "")
-                        }
-                    }
-                    steps = new Listing {
-                        common.checkout
-                        common.setupJdk
-                        new ActionStep {
-                            uses = "actions/download-artifact@v4"
-                            with = new Mapping {
-                                ["name"] = "${{ matrix.build.name }}-aab"
-                                ["path"] = "./"
+                ...(if (generateApks)
+                    new Mapping {
+                        ["generate-apks"] = new Job {
+                            needs = new Listing {
+                                "version"
+                                "build-aab"
+                            }
+                            strategy = new JobStrategy {
+                                matrix = new Mapping {
+                                    ["build"] = generateMatrixInclude(aabBuildDescriptors, "")
+                                }
+                            }
+                            steps = new Listing {
+                                common.checkout
+                                common.setupJdk
+                                new ActionStep {
+                                    uses = "actions/download-artifact@v4"
+                                    with = new Mapping {
+                                        ["name"] = "${{ matrix.build.name }}-aab"
+                                        ["path"] = "./"
+                                    }
+                                }
+                                ...extractApksFromAAB(new Listing {
+                                    "--mode=${{ matrix.build.instant && 'instant' || 'persistent' }}"
+                                })
+                                new ActionStep {
+                                    uses = "actions/upload-artifact@v4"
+                                    with = new Mapping {
+                                        ["name"] = "${{ matrix.build.name }}-apks"
+                                        ["path"] = "./${{ matrix.build.name }}.apks"
+                                    }
+                                }
                             }
                         }
-                        ...extractApksFromAAB(new Listing {
-                            "--mode=${{ matrix.build.instant && 'instant' || 'persistent' }}"
-                        })
-                        new ActionStep {
-                            uses = "actions/upload-artifact@v4"
-                            with = new Mapping {
-                                ["name"] = "${{ matrix.build.name }}-apks"
-                                ["path"] = "./${{ matrix.build.name }}.apks"
+                        ["publish-apks-to-release"] = new Job {
+                            strategy = new JobStrategy {
+                                matrix = new Mapping {
+                                    ["build"] = generateMatrixInclude(aabBuildDescriptors, "")
+                                }
+                            }
+                            needs = new Listing {
+                                "version"
+                                "release"
+                                "generate-apks"
+                            }
+                            steps = new Listing {
+                                new ActionStep {
+                                    uses = "actions/download-artifact@v4"
+                                    with = new Mapping {
+                                        ["name"] = "${{ matrix.build.name }}-apks"
+                                        ["path"] = "./"
+                                    }
+                                }
+                                new ActionStep {
+                                    name = "Upload Artifact to Release"
+                                    uses = "shogo82148/actions-upload-release-asset@v1"
+                                    env = new Mapping {
+                                        ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
+                                    }
+                                    with = new Mapping {
+                                        ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
+                                        ["asset_path"] = "./${{ matrix.build.name }}.apks"
+                                        ["asset_name"] = "${{ matrix.build.name }}-v${{ needs.version.outputs.version }}.apks"
+                                        ["asset_content_type"] = "application/zip"
+                                    }
+                                }
                             }
                         }
                     }
-                }
-                ["publish-apks-to-release"] = new Job {
-                    strategy = new JobStrategy {
-                        matrix = new Mapping {
-                            ["build"] = generateMatrixInclude(aabBuildDescriptors, "")
-                        }
-                    }
-                    needs = new Listing {
-                        "version"
-                        "release"
-                        "generate-apks"
-                    }
-                    steps = new Listing {
-                        new ActionStep {
-                            uses = "actions/download-artifact@v4"
-                            with = new Mapping {
-                                ["name"] = "${{ matrix.build.name }}-apks"
-                                ["path"] = "./"
-                            }
-                        }
-                        new ActionStep {
-                            name = "Upload Artifact to Release"
-                            uses = "shogo82148/actions-upload-release-asset@v1"
-                            env = new Mapping {
-                                ["GITHUB_TOKEN"] = "${{ secrets.GITHUB_TOKEN }}"
-                            }
-                            with = new Mapping {
-                                ["upload_url"] = "${{ needs.release.outputs.upload_url }}"
-                                ["asset_path"] = "./${{ matrix.build.name }}.apks"
-                                ["asset_name"] = "${{ matrix.build.name }}-v${{ needs.version.outputs.version }}.apks"
-                                ["asset_content_type"] = "application/zip"
-                            }
-                        }
-                    }
-                }
+                else new Mapping {})
             }
         else new Mapping {}
     )
