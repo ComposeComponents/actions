@@ -259,7 +259,7 @@ jobs = new Mapping {
         if (hasAab)
             new Mapping {
                 ["build-aab"] = buildJob(
-                    apkBuildDescriptors,
+                    aabBuildDescriptors,
                     "aab",
                     "bundle",
                     "bundle"
