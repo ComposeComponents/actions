@@ -6,6 +6,7 @@ hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden jobName: String
 hidden gradleTask: String
+hidden javaVersion = "17"
 
 on = new On {
     push = new Push {
@@ -32,7 +33,7 @@ jobs = new Mapping {
         }
         steps = new Listing {
             common.checkout
-            common.setupJdk
+            common.setupJdk(javaVersion)
             ...extraBuildSteps
             ...common.gradle("\(jobName.capitalize())", "${{ matrix.module }}:\(gradleTask)", new Mapping {})
         }

@@ -7,11 +7,11 @@ checkout = new actions.ActionStep {
     }
 }
 
-setupJdk = new actions.ActionStep {
-    name = "Set up JDK 17"
+function setupJdk(version: String) = new actions.ActionStep {
+    name = "Set up JDK \(version)"
     uses = "actions/setup-java@v4"
     with = new Mapping {
-        ["java-version"] = "17"
+        ["java-version"] = version
         ["distribution"] = "temurin"
     }
 }

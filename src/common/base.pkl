@@ -3,3 +3,4 @@ extends "base-import.pkl"
 
 hidden modules: List<String>
 hidden extraBuildSteps: Listing<Step> = new Listing {}
+hidden javaVersion: String = "17"

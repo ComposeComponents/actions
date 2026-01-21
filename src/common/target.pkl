@@ -207,7 +207,8 @@ function toJobStrategy(targets: Listing<MultiplatformTarget>, p: SpecializationP
 function buildTargetJob(
   targets: Listing<MultiplatformTarget>, 
   p: SpecializationParameters,
-  extraBuildSteps: Listing<base.Step>
+  extraBuildSteps: Listing<base.Step>,
+  javaVersion: String
 ) = new base.Job {
   `runs-on` = "${{ matrix.configuration.os }}"
   strategy = toJobStrategy(targets, p)
@@ -216,7 +217,7 @@ function buildTargetJob(
   }
   steps = new Listing {
     common.checkout
-    common.setupJdk
+    common.setupJdk(javaVersion)
     ...extraBuildSteps
     ...common.gradle(
       "Build",

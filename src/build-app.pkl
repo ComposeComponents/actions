@@ -23,6 +23,8 @@ local hasInstant = aabBuildDescriptors.filter((e) -> e.instant).length > 0
 local hasAab = aabBuildDescriptors.length > 0
 local hasApk = apkBuildDescriptors.length > 0
 
+hidden javaVersion = "17"
+
 
 function buildJob(
     descriptors: List<BuildDescriptor>,
@@ -47,7 +49,7 @@ function buildJob(
     }
     steps = new Listing {
         common.checkout
-        common.setupJdk
+        common.setupJdk(javaVersion)
         ...extraBuildSteps
         ...common.gradle(
             "Build",
@@ -285,7 +287,7 @@ jobs = new Mapping {
                             }
                             steps = new Listing {
                                 common.checkout
-                                common.setupJdk
+                                common.setupJdk(javaVersion)
                                 new ActionStep {
                                     uses = "actions/download-artifact@v4"
                                     with = new Mapping {
@@ -377,7 +379,7 @@ jobs = new Mapping {
                     }
                     steps = new Listing {
                         common.checkout
-                        common.setupJdk
+                        common.setupJdk(javaVersion)
                         new ActionStep {
                             uses = "actions/download-artifact@v4"
                             with = new Mapping {

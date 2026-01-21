@@ -7,6 +7,7 @@ hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden sonatypeEnabled = true
 hidden sonatypeAutomaticRelease = false
+hidden javaVersion = "17"
 
 local specializationParameters = new target.SpecializationParameters {
     version = "${{ needs.version.outputs.version }}"
@@ -54,7 +55,8 @@ jobs = new Mapping {
     ["build"] = target.buildTargetJob(
         targets,
         specializationParameters,
-        extraBuildSteps
+        extraBuildSteps,
+        javaVersion
     )
     ["release"] = new Job {
         needs = new Listing {
@@ -139,7 +141,7 @@ jobs = new Mapping {
         `if` = "github.ref == 'refs/heads/main'"
         steps = new Listing {
             common.checkout
-            common.setupJdk
+            common.setupJdk(javaVersion)
             ...common.gradle(
                 "Build",
                 """

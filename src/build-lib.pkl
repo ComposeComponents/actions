@@ -5,6 +5,7 @@ import "common/common.pkl"
 hidden extraBuildSteps: Listing<Step>
 hidden modules: List<String>
 hidden sonatypeEnabled = true
+hidden javaVersion: String = "17"
 
 name = "Build Library"
 
@@ -41,7 +42,7 @@ jobs = new Mapping {
         }
         steps = new Listing {
             common.checkout
-            common.setupJdk
+            common.setupJdk(javaVersion)
             ...extraBuildSteps
             ...common.gradle(
                 "Build", 
@@ -128,7 +129,7 @@ jobs = new Mapping {
         `if` = "github.ref == 'refs/heads/main'"
         steps = new Listing {
             common.checkout
-            common.setupJdk
+            common.setupJdk(javaVersion)
             ...common.gradle(
                 "Build", 
                 """
